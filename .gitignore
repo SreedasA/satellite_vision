@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Large satellite data and model weights (keep out of git)
+data/
+*.tif
+*.tiff
+*.jp2
+*.SAFE/
+*.zip
+*.pt
+*.pth
+*.onnx
+*.ckpt
+
+# Secrets
+.env
+*.key
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
