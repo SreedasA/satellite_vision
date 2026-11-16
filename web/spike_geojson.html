@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LoD1 GeoJSON Spike</title>
+  <!-- Phase 0 spike: real DFC23 footprints + reference heights extruded on the globe (no Cesium ion). -->
+  <script src="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Cesium.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <style>
+    html, body, #viewer { margin: 0; width: 100%; height: 100%; background: #1b1f24; }
+    #panel { position: absolute; top: 10px; left: 10px; z-index: 1; background: rgba(20,24,28,.85); color: #e8e8e8;
+             font: 13px/1.4 system-ui, sans-serif; padding: 10px 12px; border-radius: 6px; max-width: 260px; }
+    #panel label { display: block; margin-top: 6px; }
+    #status { margin-top: 8px; color: #9fd39f; white-space: pre; }
+  </style>
+</head>
+<body>
+<div id="viewer"></div>
+<div id="panel">
+  <b id="title">LoD1 spike</b>
+  <label>Hour (UTC) <input id="hour" type="range" min="0" max="14" step="0.25" value="5"> <span id="hourVal"></span></label>
+  <label>Flood level (m) <input id="flood" type="range" min="0" max="10" step="0.5" value="0"> <span id="floodVal"></span></label>
+  <div id="status">loading…</div>
+</div>
+<script>
+  Cesium.Ion.defaultAccessToken = "";
+  const params = new URLSearchParams(location.search);
+  const dataUrl = params.get("data") || "data/newdelhi_gt.geojson";
+  const viewer = new Cesium.Viewer("viewer", {
+    baseLayer: false, baseLayerPicker: false, geocoder: false, timeline: false, animation: false,
+    homeButton: false, sceneModePicker: false, navigationHelpButton: false, shadows: true,
+  });
+  viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString("#59614f");
+  viewer.scene.globe.enableLighting = true;
+  viewer.shadowMap.softShadows = true;
+  viewer.shadowMap.size = 2048;
+
+  const ramp = h => Cesium.Color.fromCssColorString(h < 6 ? "#e9e4d8" : h < 12 ? "#d8c9a6" : h < 20 ? "#c9a46b" : "#b06a3b");
+  let buildings = [];
+
+  Cesium.GeoJsonDataSource.load(dataUrl).then(ds => {
+    viewer.dataSources.add(ds);
+    buildings = ds.entities.values.filter(e => e.polygon);
+    for (const e of buildings) {
+      const h = e.properties.height_m.getValue();
+      e.polygon.height = 0;
+      e.polygon.extrudedHeight = h;
+      e.polygon.material = ramp(h);
+      e.polygon.outline = false;
+      e.polygon.shadows = Cesium.ShadowMode.ENABLED;
+    }
+    document.getElementById("title").textContent = `${ds.name || dataUrl}`;
+    viewer.flyTo(ds, { duration: 0, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(20), Cesium.Math.toRadians(-35), 900) });
+    setHour(); setFlood();
+  });
+
+  const hour = document.getElementById("hour"), flood = document.getElementById("flood");
+  function setHour() {
+    const h = Number(hour.value);
+    viewer.clock.currentTime = Cesium.JulianDate.fromDate(new Date(Date.UTC(2026, 3, 15, Math.floor(h), Math.round((h % 1) * 60))));
+    document.getElementById("hourVal").textContent = `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, "0")}`;
+  }
+  function setFlood() {
+    const lvl = Number(flood.value);
+    document.getElementById("floodVal").textContent = lvl;
+    let submerged = 0, partial = 0;
+    for (const e of buildings) {
+      const h = e.properties.height_m.getValue();
+      let c = ramp(h);
+      if (lvl > 0 && h <= lvl) { c = Cesium.Color.fromCssColorString("#c0392b"); submerged++; }
+      else if (lvl > 0) { c = Cesium.Color.fromCssColorString("#e67e22"); partial++; }
+      e.polygon.material = c;
+    }
+    const floorsWet = lvl > 0 ? Math.ceil(lvl / 3) : 0;
+    const ionCalls = performance.getEntriesByType("resource").filter(r => r.name.includes("cesium.com")).length;
+    document.getElementById("status").textContent =
+      `buildings: ${buildings.length}\nfully submerged: ${submerged}\nlower ${floorsWet} floor(s) wet: ${partial}\nion requests: ${ionCalls}`;
+  }
+  hour.oninput = setHour; flood.oninput = setFlood;
+</script>
+</body>
+</html>

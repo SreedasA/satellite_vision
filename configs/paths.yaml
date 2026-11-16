@@ -1,0 +1,8 @@
+# Local storage. Kept OUTSIDE OneDrive so large files never sync.
+# Override per machine (e.g. Kaggle) with the SAT2CITY_DATA environment variable.
+data_root: S:/sat2city-data
+raw: ${data_root}/raw
+processed: ${data_root}/processed
+checkpoints: ${data_root}/checkpoints
+mlruns: ${data_root}/mlruns
+cache: ${data_root}/cache

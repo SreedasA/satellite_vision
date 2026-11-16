@@ -6,7 +6,7 @@ venv/
 .ipynb_checkpoints/
 
 # Large satellite data and model weights (keep out of git)
-data/
+/data/
 *.tif
 *.tiff
 *.jp2
@@ -27,3 +27,12 @@ Thumbs.db
 desktop.ini
 .vscode/
 .idea/
+
+# Derived from datasets with unverified redistribution terms (see docs/DATA.md)
+web/data/
+
+# Experiment tracking / outputs (live under S:/sat2city-data)
+mlruns/
+outputs/
+*.egg-info/
+.pytest_cache/
