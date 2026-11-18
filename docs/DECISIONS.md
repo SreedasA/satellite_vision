@@ -42,3 +42,17 @@ Short records: date · decision · why · alternatives considered.
 ### D11 · 2026-11-17 · Zero-shot DAv2 is not a usable height estimator here, so fine-tuning is required
 **Evidence (DFC23 block split, 150 test tiles):** a per-image *oracle* affine fit of zero-shot DAv2-S reaches RMSE 8.18 m, against 9.64 m for predicting the training mean. The deployable global fit gives 9.42 m.
 **Consequence:** Phase 1/2 fine-tuning is the core of the project. The zero-shot floor-count approach (IGARSS 2026, aerial imagery) does not transfer to 0.5 m satellite tiles.
+
+### D12 · 2026-11-17 · Phase 1 runs offline from the HF cache (`HF_HUB_OFFLINE=1`)
+**Why:** the first training launch hung with no workers and an idle GPU after startup. The cause is most likely the Hugging Face library checking online for model updates over the slow link. Runs now set `HF_HUB_OFFLINE=1` and write periodic faulthandler stack dumps (`runs_*.stack`).
+
+### D13 · 2026-11-17 · S4 (split leakage) needs a controlled design: same test views, different training sets
+**Evidence:** after 5 epochs, the random-image model scored *worse* in metres than the tile model (RMSE 4.23 vs 3.38). Its own test sample has 2.5× more buildings above 30 m (42 vs 17); on SI-RMSE it looks better (0.62 vs 0.68). Comparing on different test sets mixes up leakage with differences in test content.
+**Design for Phase 3:** fix one set of test views on held-out tiles. Train model A on tiles that exclude those locations, and model B on the same data plus *other dates of the test locations*. Evaluate both on the identical test views; the gap measures leakage.
+
+### D14 · 2026-11-17 · Phase 2's main target: tall buildings are badly under-predicted
+**Evidence (DFC19 tile test, DAv2-S 5 epochs):** per-building bias −1.3 m (< 10 m, n=7,124), −7.7 m (10–30 m, n=318), −25.6 m (> 30 m, n=17). The model regresses towards the many low houses.
+**Candidate fixes (one at a time):** longer training; height-bin-weighted loss; higher head LR / encoder LR; MSE term weight (penalises large errors); a log-space target.
+
+### D15 · 2026-11-17 · Viewer sets the sun to ~10:30 local solar time per tile
+**Why:** a fixed 05:00 UTC default lit New Delhi but drew Jacksonville at night. UTC hour = 10.5 − lon/15.

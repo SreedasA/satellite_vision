@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sat2City3D Viewer</title>
+  <script src="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Cesium.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <style>
+    :root { --panel: rgba(18,22,27,.88); --text: #e9ecef; --muted: #9aa4ae; --accent: #f0b35a; --ok: #8fd19e; --line: #2c333b; }
+    html, body, #viewer { margin: 0; width: 100%; height: 100%; background: #14181d; color: var(--text);
+                          font: 13px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
+    #panel { position: absolute; top: 12px; left: 12px; z-index: 2; width: 280px; max-width: calc(100vw - 48px);
+             background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+    h1 { font-size: 15px; margin: 0 0 2px; } .sub { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+    .row { display: flex; gap: 6px; margin: 6px 0; } select, input[type=text] { flex: 1; min-width: 0; background: #0f1317;
+           color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; font: inherit; }
+    button { background: var(--accent); color: #1b1b1b; border: 0; border-radius: 4px; padding: 4px 10px; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: wait; }
+    label { display: grid; grid-template-columns: 92px 1fr 44px; align-items: center; gap: 6px; margin: 7px 0; color: var(--muted); }
+    label span:last-child { color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+    input[type=range] { width: 100%; accent-color: var(--accent); }
+    #stats { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; }
+    #stats div:nth-child(even) { text-align: right; font-variant-numeric: tabular-nums; }
+    #note { color: var(--muted); font-size: 11px; margin-top: 8px; }
+    #msg { color: var(--ok); font-size: 12px; margin-top: 6px; min-height: 1em; }
+  </style>
+</head>
+<body>
+<div id="viewer"></div>
+<div id="panel">
+  <h1>Sat2City3D</h1>
+  <div class="sub">One satellite image → 3D city</div>
+  <div class="row" id="apiRow">
+    <select id="dataset"><option value="dfc23">DFC23</option><option value="dfc19">DFC19</option></select>
+    <input id="tile" type="text" placeholder="tile name">
+    <button id="load">Load</button>
+  </div>
+  <label>Rise <input id="rise" type="range" min="0" max="1" step="0.01" value="1"><span id="riseVal"></span></label>
+  <label>Sun (UTC h) <input id="hour" type="range" min="0" max="23.75" step="0.25" value="5"><span id="hourVal"></span></label>
+  <label>Flood (m) <input id="flood" type="range" min="0" max="12" step="0.5" value="0"><span id="floodVal"></span></label>
+  <div id="stats"></div>
+  <div id="msg"></div>
+  <div id="note">Heights are model estimates. Flood view is illustrative only, not a hydraulic simulation.</div>
+</div>
+<script>
+  Cesium.Ion.defaultAccessToken = "";
+  const qs = new URLSearchParams(location.search);
+  const API = qs.get("api");               // e.g. http://127.0.0.1:8000
+  const STATIC = qs.get("data");           // e.g. data/newdelhi_pred.geojson
+  if (!API) document.getElementById("apiRow").style.display = "none";
+  if (qs.get("dataset")) document.getElementById("dataset").value = qs.get("dataset");
+  if (qs.get("tile")) document.getElementById("tile").value = qs.get("tile");
+
+  const viewer = new Cesium.Viewer("viewer", {
+    baseLayer: false, baseLayerPicker: false, geocoder: false, timeline: false, animation: false,
+    homeButton: false, sceneModePicker: false, navigationHelpButton: false, shadows: true, infoBox: true,
+  });
+  viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString("#4d5546");
+  viewer.scene.globe.enableLighting = true;
+  viewer.shadowMap.softShadows = true;
+  viewer.shadowMap.size = 2048;
+
+  const ramp = h => Cesium.Color.fromCssColorString(h < 6 ? "#ece6d8" : h < 12 ? "#ddcca6" : h < 20 ? "#cfa66c" : h < 35 ? "#b97a45" : "#8e4f2c");
+  const state = { buildings: [], heights: [], rise: 1, flood: 0, water: null, imagery: null, meta: {} };
+
+  function setStats() {
+    const lvl = state.flood, hs = state.heights;
+    const sub = hs.filter(h => lvl > 0 && h <= lvl).length, part = hs.filter(h => lvl > 0 && h > lvl).length;
+    const med = hs.length ? [...hs].sort((a, b) => a - b)[Math.floor(hs.length / 2)] : 0;
+    const rows = [["Buildings", hs.length], ["Median height", `${med.toFixed(1)} m`],
+                  ["Tallest", `${(hs.length ? Math.max(...hs) : 0).toFixed(1)} m`],
+                  ["Fully submerged", sub], [`Lower ${Math.ceil(lvl / 3)} floor(s) wet`, part],
+                  ["Footprints", state.meta.footprints || "-"]];
+    document.getElementById("stats").innerHTML = rows.map(([k, v]) => `<div>${k}</div><div>${v}</div>`).join("");
+  }
+
+  function applyHeights() {
+    state.buildings.forEach((e, i) => {
+      const h = state.heights[i];
+      e.polygon.extrudedHeight = Math.max(h * state.rise, 0.05);
+      let c = ramp(h);
+      if (state.flood > 0) c = h <= state.flood ? Cesium.Color.fromCssColorString("#d0453a") : Cesium.Color.fromCssColorString("#e88a35");
+      e.polygon.material = c.withAlpha(state.rise < 0.05 ? 0.0 : 1.0);
+    });
+    setStats();
+  }
+
+  async function show(geojson) {
+    viewer.dataSources.removeAll();
+    if (state.imagery) viewer.imageryLayers.remove(state.imagery);
+    if (state.water) viewer.entities.remove(state.water);
+    state.meta = geojson.metadata || {};
+    const ds = await Cesium.GeoJsonDataSource.load(geojson, { clampToGround: false });
+    viewer.dataSources.add(ds);
+    state.buildings = ds.entities.values.filter(e => e.polygon);
+    state.heights = state.buildings.map(e => e.properties.height_m.getValue());
+    for (const e of state.buildings) {
+      e.polygon.height = 0; e.polygon.outline = false; e.polygon.shadows = Cesium.ShadowMode.ENABLED;
+      const p = e.properties;
+      e.description = `Height ${p.height_m.getValue()} m · ~${p.floors.getValue()} floors · ${p.area_m2.getValue()} m²`;
+    }
+    const b = state.meta.bounds;
+    if (b && API) {
+      const url = `${API}/benchmark/${document.getElementById("dataset").value}/${encodeURIComponent(state.meta.tile)}/image.png`;
+      const rect = Cesium.Rectangle.fromDegrees(...b);
+      const provider = await Cesium.SingleTileImageryProvider.fromUrl(url, { rectangle: rect });
+      // Clip the layer to the tile; otherwise edge texels get smeared across the whole globe.
+      state.imagery = new Cesium.ImageryLayer(provider, { rectangle: rect });
+      viewer.imageryLayers.add(state.imagery);
+    }
+    // Water: a translucent extruded polygon whose top follows the flood slider.
+    if (b) {
+      const ring = Cesium.Cartesian3.fromDegreesArray([b[0], b[1], b[2], b[1], b[2], b[3], b[0], b[3]]);
+      state.water = viewer.entities.add({ polygon: {
+        hierarchy: ring, height: 0,
+        extrudedHeight: new Cesium.CallbackProperty(() => Math.max(state.flood, 0.01), false),
+        material: Cesium.Color.fromCssColorString("#3d8fe0").withAlpha(0.45),
+        show: new Cesium.CallbackProperty(() => state.flood > 0, false),
+      } });
+    }
+    // Start the sun at ~10:30 local solar time for this tile (UTC hour = 10.5 - lon/15).
+    const lon = b ? (b[0] + b[2]) / 2 : Cesium.Math.toDegrees(
+      Cesium.Cartographic.fromCartesian(state.buildings[0].polygon.hierarchy.getValue().positions[0]).longitude);
+    el("hour").value = (((10.5 - lon / 15) % 24) + 24) % 24;
+    el("hour").oninput();
+    applyHeights();
+    await viewer.flyTo(ds, { duration: 0, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(25), Cesium.Math.toRadians(-38), 0) });
+  }
+
+  async function loadFromApi() {
+    const ds = document.getElementById("dataset").value, tile = document.getElementById("tile").value.trim();
+    if (!tile) return;
+    const btn = document.getElementById("load"), msg = document.getElementById("msg");
+    btn.disabled = true; msg.textContent = "Predicting heights…";
+    try {
+      const r = await fetch(`${API}/benchmark/${ds}/${encodeURIComponent(tile)}`);
+      if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+      const gj = await r.json();
+      await show(gj);
+      msg.textContent = `Predicted in ${gj.metadata.seconds} s (${gj.metadata.placement} placement)`;
+    } catch (e) { msg.textContent = `Error: ${e.message}`; } finally { btn.disabled = false; }
+  }
+
+  const el = id => document.getElementById(id);
+  el("rise").oninput = () => { state.rise = +el("rise").value; el("riseVal").textContent = `${Math.round(state.rise * 100)}%`; applyHeights(); };
+  el("hour").oninput = () => {
+    const h = +el("hour").value;
+    viewer.clock.currentTime = Cesium.JulianDate.fromDate(new Date(Date.UTC(2026, 3, 15, Math.floor(h), Math.round((h % 1) * 60))));
+    el("hourVal").textContent = `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, "0")}`;
+  };
+  el("flood").oninput = () => { state.flood = +el("flood").value; el("floodVal").textContent = state.flood; applyHeights(); };
+  el("load").onclick = loadFromApi;
+  el("rise").oninput(); el("hour").oninput(); el("flood").oninput();
+
+  if (STATIC) fetch(STATIC).then(r => r.json()).then(show);
+  else if (API && el("tile").value) loadFromApi();
+  window.sat2city = { viewer, state };
+</script>
+</body>
+</html>

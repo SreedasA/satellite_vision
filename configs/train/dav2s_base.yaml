@@ -1,0 +1,24 @@
+# Phase 1 starting recipe for DAv2-Small (see docs/PLAN.md §5 and docs/RESEARCH.md).
+dataset: dfc19          # dfc19 | dfc23
+split: tile             # dfc19: random_image | tile | cross_city_jax2oma ; dfc23: random_tile | block | cross_city
+model: depth-anything/Depth-Anything-V2-Small-hf
+
+epochs: 5
+batch_size: 4
+crop: 518
+num_workers: 4
+lr_encoder: 5.0e-6      # Depth2Elevation used 5e-6 for the whole model
+lr_head: 5.0e-5         # higher LR for the DPT head that must learn metric heights
+weight_decay: 0.01
+grad_clip: 1.0
+precision: bf16
+
+loss:
+  w_l1: 1.0
+  w_mse: 0.0
+  w_silog: 0.5
+  w_grad: 0.5
+
+n_val: 80               # tiles evaluated after every epoch (full tile)
+n_test: 150             # same deterministic sample rule as scripts/baselines.py
+seed: 0

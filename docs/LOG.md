@@ -59,3 +59,35 @@
 3. DFC19 views are not georeferenced → globe placement uses DFC23 (UTM). DFC19 is shown in a local frame (ROADMAP P0.5 Plan B).
 
 **Gate G0: PASS.** Data loaded and licences recorded; splits by tile/block are leak-free; evaluation tests pass; every quick test has a decided path.
+
+## 2026-11-17 · Phase 1 (rough end-to-end version) → v0.2 in progress
+
+**Built:**
+- `sat2city.train`: crops at native resolution + rot/flip/photometric augmentation; L1 + SiLog(log1p) + gradient loss; AdamW (encoder 5e-6 / head 5e-5); bf16; MLflow (sqlite); best checkpoint by val building RMSE; test on the baseline sample.
+- `sat2city.infer`: tiled prediction with blending → height GeoTIFF → LoD1 GeoJSON.
+- `api/main.py`: `/health`, `/predict`, `/benchmark/{ds}/{tile}`, `/…/image.png`.
+- `web/index.html`: image drape, rise / sun / flood sliders, stats.
+- Tests: 31 pass.
+
+**Results (DAv2-S, 5 epochs; test = same deterministic sample as the baselines)**
+
+| Dataset / split | MAE | RMSE | SI | B-RMSE | bld MAE | floor ±1 | bias 10–30 m | bias 30+ m |
+|---|---|---|---|---|---|---|---|---|
+| DFC19 tile (leak-free) | 1.26 | 3.38 | 0.68 | 7.69 | 2.06 | 0.93 | −7.70 | −25.6 (n=17) |
+| DFC19 random_image (leaky) | 1.77 | 4.23 | 0.62 | 8.52 | 1.94 | – | −5.61 | −31.7 (n=42) |
+| DFC23 block | 2.30 | 5.74 | 0.60 | 7.89 | 3.28 | 0.79 | −1.93 | −9.95 |
+| DFC23 cross-city (New Delhi unseen) | 1.93 | 5.38 | 0.67 | 10.02 | 6.15 | 0.48 | −6.96 | −19.4 |
+
+Baselines for comparison: DFC19 train-mean RMSE 5.15 / B-RMSE 10.97; DFC23 train-mean 9.64 / 15.04.
+
+**Observations**
+1. Fine-tuning beats every baseline on every dataset after only 5 epochs (~9–16 min per run).
+2. DFC23 block per-building MAE of 3.28 m is already in the range of published results on other datasets (3.23–3.3 m).
+3. **New Delhi held out:** per-building MAE nearly doubles (3.28 → 6.15 m) and floor ±1 falls from 0.79 → 0.48. This is the honest generalisation gap (S3).
+4. Tall buildings are under-predicted everywhere → the Phase 2 target (D14).
+5. Random vs tile comparison is confounded by test content → controlled S4 design (D13).
+
+**Viewer fixes:**
+- Sun time is set from the tile longitude (D15).
+- Image layer clipped to the tile, and a 1-px transparent PNG border stops Cesium smearing edge texels across the globe.
+- The water surface now renders (extruded polygon with a CallbackProperty height).
