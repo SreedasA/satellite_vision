@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import subprocess
 import time
@@ -28,6 +29,7 @@ from sat2city.data.datasets import HeightDataset, dataset_items
 from sat2city.eval.benchmark import evaluate_model, load_split, make_bench, sample_ids
 from sat2city.models.dav2 import DAv2Height
 from sat2city.models.losses import height_loss
+from sat2city.progress import ProgressWriter
 
 
 def parse_args():
@@ -42,6 +44,16 @@ def parse_args():
     ap.add_argument("--max-steps-per-epoch", type=int, default=None, help="debug: cap steps per epoch")
     ap.add_argument("--run-name")
     return ap.parse_args()
+
+
+def keep_awake() -> None:
+    """Stop Windows from sleeping while this process runs (no admin needed; released on exit).
+    Does not override closing the laptop lid if Windows is set to sleep on lid close."""
+    if os.name == "nt":
+        import ctypes
+
+        ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
 
 
 def git_commit() -> str:
@@ -64,6 +76,7 @@ def flat(d: dict, prefix: str = "") -> dict[str, float]:
 
 def main():
     args = parse_args()
+    keep_awake()
     cfg = yaml.safe_load(Path(args.config).read_text())
     for k in ("dataset", "split", "epochs", "batch_size", "n_val", "n_test"):
         if getattr(args, k) is not None:
@@ -101,11 +114,22 @@ def main():
     mlflow.set_experiment("sat2city")
     (run_dir / "config.json").write_text(json.dumps(cfg | {"git": git_commit(), "run_name": run_name}, indent=1))
 
+    steps_per_epoch = min(len(loader), args.max_steps_per_epoch or len(loader))
+    progress = ProgressWriter(run_dir, run_name, cfg["epochs"], steps_per_epoch)
+    try:
+        train_loop(cfg, args, run_dir, run_name, model, opt, dtype, loader, bench, val_ids, test_ids, train_ds, progress)
+    except BaseException as e:
+        progress.failed(f"{type(e).__name__}: {e}")
+        raise
+
+
+def train_loop(cfg, args, run_dir, run_name, model, opt, dtype, loader, bench, val_ids, test_ids, train_ds, progress):
     best, step = float("inf"), 0
     with mlflow.start_run(run_name=run_name):
         mlflow.log_params(flat(cfg) | {"git": git_commit(), "n_train": len(train_ds), "n_val_eval": len(val_ids)})
         for epoch in range(1, cfg["epochs"] + 1):
             model.train()
+            progress.epoch_start(epoch)
             t0, losses = time.perf_counter(), []
             for i, batch in enumerate(loader):
                 if args.max_steps_per_epoch and i >= args.max_steps_per_epoch:
@@ -124,10 +148,14 @@ def main():
                 opt.step()
                 losses.append(float(loss.detach()))
                 step += 1
+                progress.step(i + 1, losses[-1])
                 if step % 50 == 0:
                     mlflow.log_metrics({f"train.{k}": v for k, v in parts.items()} | {"train.loss": losses[-1]}, step=step)
 
+            progress.phase("evaluating")
+            t_eval = time.perf_counter()
             val = evaluate_model(model, bench, val_ids)
+            eval_sec = time.perf_counter() - t_eval
             score = val["building"]["rmse"]
             dt = time.perf_counter() - t0
             mlflow.log_metrics(flat(val, "val.") | {"epoch_sec": dt, "train.loss_epoch": float(np.mean(losses))}, step=step)
@@ -139,12 +167,16 @@ def main():
             if score < best:
                 best = score
                 torch.save(model.state_dict(), run_dir / "best.pt")
+            progress.epoch_end(line, eval_sec, best)
 
+        progress.phase("testing")
         model.load_state_dict(torch.load(run_dir / "best.pt", map_location="cuda"))
         test = evaluate_model(model, bench, test_ids)
         test |= {"dataset": cfg["dataset"], "split": cfg["split"], "run": run_name, "best_val_building_rmse": best}
         (run_dir / "test_metrics.json").write_text(json.dumps(test, indent=1))
         mlflow.log_metrics(flat(test, "test."))
+        progress.done({"rmse": test["all"]["rmse"], "building_rmse": test["building"]["rmse"],
+                       "bld_mae": test["per_building"]["all"]["mae"]})
         print(json.dumps({k: test[k] for k in ("all", "building")} | {"per_building": test["per_building"]["all"]}, indent=1))
 
 
