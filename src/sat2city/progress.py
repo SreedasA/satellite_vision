@@ -63,6 +63,12 @@ class ProgressWriter:
         except OSError:
             pass  # skipped this update; the next one will catch up
 
+    def resume_from(self, epochs_done: int, global_step: int, best: float, history: list[str]):
+        """Continue the bar of a resumed run instead of starting again at 0%."""
+        self.state |= {"epoch": epochs_done, "global_step": global_step, "history": list(history)[-20:],
+                       "best_val_building_rmse": round(best, 3) if best != float("inf") else None}
+        self._write()
+
     WARMUP_STEPS = 3  # DataLoader workers start slowly on Windows; don't let that skew the ETA
 
     def epoch_start(self, epoch: int):
@@ -127,7 +133,7 @@ def render(p: dict, width: int = 34) -> str:
         f"   Remaining ≈ {fmt_time(p['eta_sec']) if p['status'] != 'done' else '0'}",
     ]
     if p.get("best_val_building_rmse") is not None:
-        lines.append(f"Best val building-RMSE so far: {p['best_val_building_rmse']} m")
+        lines.append(f"Best val score so far: {p['best_val_building_rmse']} (lower is better)")
     if p["history"]:
         lines.append("Last epoch: " + p["history"][-1])
     if p.get("error"):

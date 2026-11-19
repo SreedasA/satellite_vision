@@ -1,0 +1,6 @@
+# Phase 2 / B = A + height-weighted L1 (a 30 m pixel counts ~4x a ground pixel)
+base: a_long.yaml
+loss:
+  w_tall: 1.0
+  tall_ref: 10.0
+  tall_cap: 5.0

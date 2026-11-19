@@ -32,14 +32,18 @@ from sat2city.data.io import read_rgb
 from sat2city.eval.benchmark import make_bench, predict_tile
 from sat2city.eval.metrics import label_buildings
 from sat2city.geo.lod1 import instances_to_features, instances_to_features_geo, write_geojson
-from sat2city.models.dav2 import DAv2Height
+from sat2city.models import build_model
+from sat2city.models.dav2 import DAV2_SMALL
 
 TILE, OVERLAP = 1022, 128
 
 
 def load_model(checkpoint: str | Path, device: str = "cuda") -> torch.nn.Module:
+    """Rebuild the architecture recorded in the run's config.json (DAv2 if absent) and load weights."""
     paths = load_paths()
-    model = DAv2Height(cache_dir=str(paths["cache"]))
+    cfg_path = Path(checkpoint).parent / "config.json"
+    name = json.loads(cfg_path.read_text()).get("model", DAV2_SMALL) if cfg_path.exists() else DAV2_SMALL
+    model = build_model(name, cache_dir=str(paths["cache"]), pretrained=False)
     model.load_state_dict(torch.load(checkpoint, map_location="cpu"))
     return model.to(device).eval()
 

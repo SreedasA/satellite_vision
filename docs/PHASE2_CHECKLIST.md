@@ -11,7 +11,7 @@ Owner: **C** = Claude, **Y** = you.
 | [x] | README rewritten for v0.2 | C | Must | Results, quick start, limitations, acknowledgements |
 | [x] | Live training progress bar | C | Must | `scripts\watch_training.cmd` → bar, %, epoch/step, ETA, best val; launched in the Terminal panel for every run |
 | [x] | Verify the progress bar's ETA on a short demo run | C | Must | Done: ETA within ~10%; fixed a Windows file-lock crash (progress can no longer stop training); watcher follows new runs automatically |
-| [ ] | Commit today's changes (progress bar, checklist) | C | Must | via `save.ps1` |
+| [x] | Commit today's changes (progress bar, checklist) | C | Must | `b1b765d` |
 | [ ] | Tag `v0.1` and `v0.2` | C | Nice | Roadmap version ladder |
 | [ ] | LinkedIn post about v0.2 | Y | Should | I can draft it |
 | [ ] | Check DFC2023 licence/terms on DataPort / contest T&C | Y | Should | Needed before any public DFC2023 image or GIF |
@@ -21,20 +21,20 @@ Owner: **C** = Claude, **Y** = you.
 
 | ✓ | Item | Owner | Priority | Why |
 |---|---|---|---|---|
-| [ ] | **Resume from checkpoint** (`last.pt` with model + optimizer + epoch; `--resume`) | C | Must | Phase 2 runs take ~1.5–2.5 h; sleep, crashes or a closed session currently lose everything |
+| [x] | **Resume from checkpoint** (`last.pt` with model + optimizer + epoch; `--resume`) | C | Must | Done: `last.pt` saved atomically every epoch (model, optimizer, LR scheduler, RNG, MLflow run id). `scripts\train.cmd --run-name X --resume`. Tested by killing a run after epoch 1 and resuming: same MLflow run, exact step count. At most the current epoch is lost |
 | [~] | **Keep the laptop awake during runs** | C+Y | Must | Done in code: training blocks Windows sleep while it runs (no admin needed). You: keep it plugged in and the lid open (or set "lid close → do nothing" when plugged in) |
-| [ ] | **Model selection that counts tall buildings** (e.g. val building-RMSE + per-building MAE for ≥ 10 m) | C | Must | Current best-checkpoint rule can favour the many low houses (D14) |
-| [ ] | **Height-bin-weighted loss option** | C | Must | First fix to try for tall-building underestimation (D14) |
-| [ ] | **LR schedule option** (warm-up + cosine) | C | Should | Needed for longer runs; Depth2Elevation used a constant LR |
-| [ ] | **U-Net baseline model** (`--model unet`, timm encoder) | C | Must | ROADMAP P2.2: checks our pipeline against published DFC19 numbers (U-Net ≈ 2.98 m RMSE) |
-| [ ] | Phase 2 experiment configs (one change per config) | C | Must | Keeps the ablations clean |
-| [ ] | Unit tests for resume, weighted loss, U-Net | C | Must | Keep the suite green |
+| [x] | **Model selection that counts tall buildings** (e.g. val building-RMSE + per-building MAE for ≥ 10 m) | C | Must | Done: `select: tall_aware` = building RMSE + per-building MAE of ≥ 10 m buildings; logged as `val.select_score` |
+| [x] | **Height-bin-weighted loss option** | C | Must | Done: `loss.w_tall` (weight 1 + w·min(h/10 m, 5); a 30 m pixel counts 4×), normalised so the loss scale stays comparable |
+| [x] | **LR schedule option** (warm-up + cosine) | C | Should | Done: `schedule: cosine`, `warmup_epochs`, `min_lr_ratio`; resumes correctly |
+| [x] | **U-Net baseline model** (`--model unet`, timm encoder) | C | Must | Done: `model: unet:resnet34` (ImageNet init; weights cached for offline use); GPU smoke run OK; inference loads either model type from the run's config |
+| [x] | Phase 2 experiment configs (one change per config) | C | Must | Done: `configs/train/p2/` A→B→C→D chain via `base:` inheritance + U-Net baseline, with a README |
+| [x] | Unit tests for resume, weighted loss, U-Net | C | Must | 43 tests pass (config inheritance, weighted loss, LR schedule, selection, checkpoint/RNG round trip, resume guards, U-Net shapes + loading) |
 
 ## C. Machine & environment
 
 | ✓ | Item | Owner | Priority | Status today |
 |---|---|---|---|---|
-| [x] | GPU environment works | C | Must | torch 2.14.1+cu126, RTX 3050, 34 tests pass |
+| [x] | GPU environment works | C | Must | torch 2.14.1+cu126, RTX 3050, 43 tests pass |
 | [x] | Disk space | C | Must | S: 224 GB free; runs use 0.5 GB |
 | [x] | Data + leak-free splits in place | C | Must | DFC19 (2,783) + DFC23 (1,773); 6 split files |
 | [ ] | Laptop plugged in, Windows power mode "Best performance", sleep off during runs | Y | Must | — |

@@ -1,7 +1,9 @@
 @echo off
 rem Run a training job on this PC: offline, independent of Claude, PC kept awake.
 rem Usage (from the project folder, in any Command Prompt / PowerShell / Windows Terminal):
-rem   scripts\train.cmd --dataset dfc23 --split block --epochs 30 --run-name p2_dfc23_block_30ep
+rem   scripts\train.cmd --config configs/train/p2/a_long.yaml --dataset dfc23 --split block --run-name p2a_dfc23_block
+rem If a run was interrupted (power cut, window closed), continue it from its last finished epoch:
+rem   scripts\train.cmd --run-name p2a_dfc23_block --resume
 rem Watch progress in a second window:  scripts\watch_training.cmd
 rem Closing this window stops the training.
 cd /d "%~dp0.."

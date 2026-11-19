@@ -1,0 +1,8 @@
+# Phase 2 / A: longer training only (vs Phase 1: 5 epochs, constant LR, building-RMSE selection)
+base: ../dav2s_base.yaml
+epochs: 30
+schedule: cosine
+warmup_epochs: 1
+min_lr_ratio: 0.05
+select: tall_aware        # building RMSE + per-building MAE of buildings >= 10 m
+select_tall_weight: 1.0

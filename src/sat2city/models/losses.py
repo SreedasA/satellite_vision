@@ -32,13 +32,23 @@ def gradient_loss(pred, target, mask):
     return _masked_mean(gx, mx) + _masked_mean(gy, my)
 
 
-def height_loss(pred, target, valid, w_l1=1.0, w_mse=0.0, w_silog=0.5, w_grad=0.5) -> tuple[torch.Tensor, dict]:
+def tall_weights(target, w_tall: float, tall_ref: float = 10.0, tall_cap: float = 5.0):
+    """Per-pixel weight 1 + w_tall * min(h / tall_ref, tall_cap): a 30 m pixel with the defaults
+    and w_tall=1 counts 4x a ground pixel. Counters the bias towards the many low houses (D14)."""
+    return 1.0 + w_tall * (target.clamp_min(0) / tall_ref).clamp_max(tall_cap)
+
+
+def height_loss(pred, target, valid, w_l1=1.0, w_mse=0.0, w_silog=0.5, w_grad=0.5,
+                w_tall=0.0, tall_ref=10.0, tall_cap=5.0) -> tuple[torch.Tensor, dict]:
+    """w_tall > 0 re-weights the L1/MSE terms by target height (normalised so the loss scale
+    stays comparable); SiLog and gradient terms are unweighted."""
     m = valid.float()
+    mw = m * tall_weights(target, w_tall, tall_ref, tall_cap) if w_tall else m
     parts = {}
     if w_l1:
-        parts["l1"] = _masked_mean((pred - target).abs(), m)
+        parts["l1"] = _masked_mean((pred - target).abs(), mw)
     if w_mse:
-        parts["mse"] = _masked_mean((pred - target) ** 2, m)
+        parts["mse"] = _masked_mean((pred - target) ** 2, mw)
     if w_silog:
         parts["silog"] = silog_loss(pred, target, m)
     if w_grad:

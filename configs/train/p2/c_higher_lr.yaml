@@ -1,0 +1,4 @@
+# Phase 2 / C = B + 2x learning rates
+base: b_tall_weight.yaml
+lr_encoder: 1.0e-5
+lr_head: 1.0e-4

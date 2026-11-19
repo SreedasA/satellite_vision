@@ -27,6 +27,8 @@ class DAv2Height(nn.Module):
     """DAv2 returning a (B,H,W) map. Pretrained = relative inverse depth; after
     fine-tuning on AGL targets the same output is read as height in metres."""
 
+    encoder_prefix = "net.backbone."  # parameters that get the (lower) encoder learning rate
+
     def __init__(self, name: str = DAV2_SMALL, cache_dir: str | None = None):
         super().__init__()
         self.net = load_dav2(name, cache_dir)

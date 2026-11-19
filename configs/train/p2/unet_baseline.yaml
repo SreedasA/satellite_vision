@@ -1,0 +1,5 @@
+# Phase 2 / U-Net baseline (ROADMAP P2.2): ResNet-34 U-Net, ImageNet init, same schedule as A
+base: a_long.yaml
+model: unet:resnet34
+lr_encoder: 1.0e-4
+lr_head: 1.0e-3

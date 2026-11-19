@@ -1,0 +1,4 @@
+# Phase 2 / D = C + small MSE term (penalises large errors, i.e. tall-building misses)
+base: c_higher_lr.yaml
+loss:
+  w_mse: 0.05
