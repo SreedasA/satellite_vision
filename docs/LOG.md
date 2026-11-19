@@ -107,3 +107,20 @@ Config `p2/a_long.yaml`: 30 epochs, cosine LR (1-epoch warm-up), tall-aware sele
 2. Tall buildings improve most: 30 m+ MAE 10.0 → 7.2 m and bias −9.9 → −6.9 m. **They are still clearly under-predicted.** The 10–30 m bias barely moved (−1.9 → −1.8 m).
 3. Validation plateaus after ~epoch 20 (select score 8.7–9.0 while training loss keeps falling). More epochs at this recipe won't fix the remaining bias → run **B (height-weighted loss)** next, as planned.
 4. 2.79 m per-building MAE is below the ~3.2–3.3 m reported on *other* datasets (not directly comparable).
+
+## 2026-11-19 · Phase 2 run B: `p2b_dfc23_block` (run by you, offline)
+
+Config `p2/b_tall_weight.yaml` = A + height-weighted L1 (`w_tall: 1.0`, ref 10 m, cap 5). This is the **only** config difference from A. Took 54 min; best checkpoint at epoch 24.
+
+| DFC23 block test | MAE | RMSE | δ1 | <1 m | B-RMSE | B-bias | bld MAE | floor ±1 | <10 m MAE / bias | 10–30 m MAE / bias | 30+ m MAE / bias |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| A (30 ep, cosine) | **1.90** | **5.14** | 0.50 | **0.70** | 7.18 | −1.06 | 2.79 | 0.84 | **2.06** / −0.81 | 3.24 / −1.77 | 7.23 / −6.92 |
+| **B (A + w_tall)** | 2.06 | 5.32 | **0.53** | 0.68 | **7.10** | **−0.28** | **2.65** | **0.85** | 2.11 / **−0.41** | **2.94 / −1.27** | **6.32 / −5.63** |
+
+**Findings**
+1. **Building metrics improve**, and the weighting did what it was meant to: per-building MAE −5% (2.79 → 2.65 m), 10–30 m MAE −9%, 30 m+ MAE −13% (7.23 → 6.32 m). Building-pixel bias is almost gone (−1.06 → −0.28 m).
+2. **Trade-off:** all-pixel MAE +8% (1.90 → 2.06), RMSE +3%, and overall bias turned slightly positive (+0.17 m). Likely cause: more weight on tall targets pushes up other tall-ish pixels too (trees, edges).
+3. **Tall buildings are still under-predicted** (−5.6 m above 30 m), but the gap is shrinking: −9.9 (P1) → −6.9 (A) → −5.6 (B).
+4. Caveat: one seed per config, one 150-tile test sample. Differences of 3–13% are suggestive, not conclusive. Repeat the best config with a second seed before Phase 2 is closed.
+
+**Decision:** B is the current best for the project goal (building heights / LoD1). C (higher LR) builds on B as planned.
