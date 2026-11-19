@@ -177,3 +177,24 @@ Validation select score: best A 8.73 / B 8.65 / C 8.32 / **D 8.01**; last-5-epoc
 1. U-Net baseline (same schedule)
 2. Second seed of D (confirm)
 3. D on DFC19 tile (comparison with published work) and DFC23 cross-city (New Delhi)
+
+## 2026-11-19 · Phase 2 U-Net baseline: `p2u_dfc23_block` (run by you, offline)
+
+Config `p2/unet_baseline.yaml`: ResNet-34 U-Net with ImageNet init, on **A's recipe** (30 epochs, cosine, tall-aware selection, *no* height weighting or MSE). LRs are set for a CNN (encoder 1e-4, head 1e-3). Took 32 min (62 s/epoch, ~40% faster than DAv2-S); best checkpoint at epoch 28. **Model sizes are almost identical: U-Net 24.5 M vs DAv2-S 24.8 M parameters.**
+
+| DFC23 block test | MAE | RMSE | δ1 | B-RMSE | B-bias | bld MAE | bld RMSE | floor ±1 | <10 m MAE | 10–30 m MAE / bias | 30+ m MAE / bias |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Train-mean baseline | 7.19 | 9.64 | 0.11 | 15.04 | – | 7.74 | – | 0.54 | – | – | – |
+| **U-Net (A recipe)** | 2.37 | 5.88 | 0.40 | 8.38 | −1.75 | 3.48 | 5.44 | 0.78 | 2.45 | 4.11 / −2.35 | 9.43 / −9.11 |
+| DAv2-S A (same recipe) | **1.90** | 5.14 | 0.50 | 7.18 | −1.06 | 2.79 | 4.50 | 0.84 | 2.06 | 3.24 / −1.77 | 7.23 / −6.92 |
+| DAv2-S D (best) | 1.99 | **5.03** | **0.55** | **6.69** | +0.20 | **2.48** | **3.95** | **0.87** | **2.03** | **2.72 / −0.77** | **5.52 / −4.64** |
+
+Validation select score: U-Net best 10.53 vs DAv2-S A 8.73 vs D 8.01.
+
+**Findings**
+1. **At the same model size and recipe, DAv2-S clearly beats the CNN:** per-building MAE −20% (3.48 → 2.79 m), building RMSE −14%, overall RMSE −13%, 30 m+ MAE −23%. The depth-foundation pretraining, not model size, accounts for the gain.
+2. **The 30-epoch U-Net (3.48 m) is worse than a 5-epoch DAv2-S (3.28 m, Phase 1).**
+3. The U-Net shares the same tall-building weakness, more strongly (30 m+ bias −9.1 m vs −6.9 m for DAv2-S A). The bias comes from the data and loss as well as the model, which is why the B–D loss changes matter.
+4. The U-Net trains ~40% faster per epoch; its validation was still improving slightly at the end. A longer U-Net run would narrow the gap, but not close it.
+
+**Gate G1 (DAv2 vs CNN): PASS on DFC23.** The other half of G1, checking the pipeline against the published DFC2019 U-Net (~2.98 m RMSE), still needs a U-Net run on the DFC2019 tile split.
