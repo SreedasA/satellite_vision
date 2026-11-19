@@ -91,3 +91,19 @@ Baselines for comparison: DFC19 train-mean RMSE 5.15 / B-RMSE 10.97; DFC23 train
 - Sun time is set from the tile longitude (D15).
 - Image layer clipped to the tile, and a 1-px transparent PNG border stops Cesium smearing edge texels across the globe.
 - The water surface now renders (extruded polygon with a CallbackProperty height).
+
+## 2026-11-18 · Phase 2 run A: `p2a_dfc23_block` (run by you, offline via `scripts\train.cmd`)
+
+Config `p2/a_long.yaml`: 30 epochs, cosine LR (1-epoch warm-up), tall-aware selection; otherwise identical to Phase 1. Took 53 min (~106 s/epoch). Best checkpoint at epoch 24 (select 8.73).
+
+| DFC23 block test (150 tiles, 9,284 buildings) | MAE | RMSE | SI | δ1 | B-RMSE | bld MAE | floor ±1 | 10–30 m MAE / bias | 30+ m MAE / bias (n=369) |
+|---|---|---|---|---|---|---|---|---|---|
+| Train-mean baseline | 7.19 | 9.64 | 1.00 | 0.11 | 15.04 | 7.74 | 0.54 | – | – |
+| Phase 1 (5 ep, constant LR) | 2.30 | 5.74 | 0.60 | 0.40 | 7.89 | 3.28 | 0.79 | 3.50 / −1.93 | 10.04 / −9.95 |
+| **Phase 2-A (30 ep, cosine)** | **1.90** | **5.14** | **0.53** | **0.50** | **7.18** | **2.79** | **0.84** | 3.24 / −1.77 | **7.23 / −6.92** |
+
+**Findings**
+1. Longer training improves every metric: RMSE −10%, building RMSE −9%, per-building MAE −15% (3.28 → 2.79 m), floor ±1 79 → 84%.
+2. Tall buildings improve most: 30 m+ MAE 10.0 → 7.2 m and bias −9.9 → −6.9 m. **They are still clearly under-predicted.** The 10–30 m bias barely moved (−1.9 → −1.8 m).
+3. Validation plateaus after ~epoch 20 (select score 8.7–9.0 while training loss keeps falling). More epochs at this recipe won't fix the remaining bias → run **B (height-weighted loss)** next, as planned.
+4. 2.79 m per-building MAE is below the ~3.2–3.3 m reported on *other* datasets (not directly comparable).
