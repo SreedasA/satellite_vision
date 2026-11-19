@@ -102,6 +102,23 @@ def test_resume_reads_saved_config_and_extends_epochs(tmp_path, monkeypatch):
     assert cfg["max_steps_per_epoch"] == 30  # main() applies it when --max-steps-per-epoch isn't given
 
 
+def test_seed_override_is_recorded(tmp_path, monkeypatch):
+    monkeypatch.setenv("SAT2CITY_DATA", str(tmp_path))
+    cfg, name, run_dir, ck = resolve_config(parse_args(["--config", str(P2 / "d_mse.yaml"), "--seed", "1",
+                                                         "--run-name", "seed1"]))
+    assert cfg["seed"] == 1 and ck is None
+    assert json.loads((run_dir / "config.json").read_text())["seed"] == 1  # a resume reuses it
+    default, *_ = resolve_config(parse_args(["--config", str(P2 / "d_mse.yaml"), "--run-name", "seed0"]))
+    assert default["seed"] == 0
+
+
+def test_eval_samples_do_not_depend_on_training_seed():
+    from sat2city.eval.benchmark import sample_ids
+
+    ids = [f"t{i}" for i in range(300)]
+    assert sample_ids(ids, 150, seed=0) == sample_ids(ids, 150, seed=0)  # test sample seed is fixed in train.py
+
+
 def test_unet_shapes_and_loading(tmp_path):
     from sat2city.infer import load_model
     from sat2city.models.unet import UNetHeight

@@ -14,3 +14,7 @@ All inherit from `../dav2s_base.yaml` via `base:`.
 Run (DFC23 block is the primary benchmark; repeat on DFC19 tile for comparison with published work):
 
     scripts\train.cmd --config configs/train/p2/a_long.yaml --dataset dfc23 --split block --run-name p2a_dfc23_block
+
+Repeat a config with another random seed (changes data order and augmentation; validation/test tiles stay the same):
+
+    scripts\train.cmd --config configs/train/p2/d_mse.yaml --dataset dfc23 --split block --seed 1 --run-name p2d_dfc23_block_s1

@@ -48,6 +48,7 @@ def parse_args(argv=None):
     ap.add_argument("--batch-size", type=int)
     ap.add_argument("--n-val", type=int)
     ap.add_argument("--n-test", type=int)
+    ap.add_argument("--seed", type=int, help="random seed for data order and augmentation (val/test samples stay fixed)")
     ap.add_argument("--max-steps-per-epoch", type=int, default=None, help="debug: cap steps per epoch")
     ap.add_argument("--run-name")
     ap.add_argument("--resume", action="store_true", help="continue <run-name> from its last.pt")
@@ -156,7 +157,7 @@ def resolve_config(args) -> tuple[dict, str, Path, dict | None]:
         return cfg, args.run_name, run_dir, load_checkpoint(run_dir / "last.pt")
 
     cfg = DEFAULTS | load_train_config(Path(args.config))
-    for k in ("dataset", "split", "epochs", "batch_size", "n_val", "n_test"):
+    for k in ("dataset", "split", "epochs", "batch_size", "n_val", "n_test", "seed"):
         if getattr(args, k) is not None:
             cfg[k] = getattr(args, k)
     tag = "unet" if str(cfg["model"]).startswith("unet") else "dav2s"
