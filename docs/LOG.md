@@ -144,3 +144,36 @@ Validation select score (lower = better): best A 8.73 / B 8.65 / **C 8.32**; mea
 4. With a higher LR, validation is noisier early (epochs 1–3) but converges well. The model was likely under-trained at the Phase 1 LR.
 
 **Decision:** C is the new best. Next: **D** (C + small MSE term) per plan. Then the **U-Net baseline** (gate G1) and a second seed of the winner.
+
+## 2026-11-19 · Phase 2 run D: `p2d_dfc23_block` (run by you, offline)
+
+Config `p2/d_mse.yaml` = C + small MSE term (`w_mse: 0.05`). This is the **only** config difference from C. Took 56 min (some epochs ~115 s, probably other load on the PC); best checkpoint at epoch 27.
+
+| DFC23 block test | MAE | RMSE | δ1 | bias | B-RMSE | B-bias | bld MAE | bld RMSE | floor ±1 | <10 m MAE / bias | 10–30 m MAE / bias | 30+ m MAE / bias |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A | **1.90** | 5.14 | 0.50 | −0.40 | 7.18 | −1.06 | 2.79 | 4.50 | 0.84 | 2.06 / −0.81 | 3.24 / −1.77 | 7.23 / −6.92 |
+| B | 2.06 | 5.32 | 0.53 | +0.17 | 7.10 | −0.28 | 2.65 | 4.22 | 0.85 | 2.11 / −0.41 | 2.94 / −1.27 | 6.32 / −5.63 |
+| C | 2.03 | 5.25 | **0.56** | +0.30 | 6.92 | −0.01 | **2.48** | 4.04 | **0.87** | 2.03 / +0.05 | **2.69** / −0.90 | 5.97 / −5.11 |
+| **D (C + MSE)** | 1.99 | **5.03** | 0.55 | +0.38 | **6.69** | +0.20 | **2.48** | **3.95** | **0.87** | 2.03 / −0.01 | 2.72 / **−0.77** | **5.52 / −4.64** |
+
+Validation select score: best A 8.73 / B 8.65 / C 8.32 / **D 8.01**; last-5-epoch mean 8.95 / 8.71 / 8.57 / **8.13**. D's margin over C (~0.4) is ~3× the epoch-to-epoch noise, so the clearest step after A→B.
+
+**Findings**
+1. **D is the best overall model.**
+   - Lowest RMSE (5.03), building RMSE (6.69) and per-building RMSE (3.95).
+   - Best on the tallest buildings: 30 m+ MAE 5.97 → 5.52 m (−8%), bias −5.1 → −4.6 m.
+   - Per-building MAE (2.48 m) and floor ±1 (87%) tie C.
+   - As expected from an MSE term, it mainly reduces *large* errors (RMSE-type metrics), while MAE-type metrics stay level.
+2. All-pixel MAE (1.99) is better than B/C, only A is lower (1.90).
+3. **Watch item:** overall bias keeps rising (−0.40 → +0.17 → +0.30 → +0.38 m across A→D); non-building pixels are increasingly over-predicted. Check in the failure gallery (trees, edges) before tuning further.
+
+**Phase 2 config sweep summary (DFC23 block, vs Phase 1):**
+- Per-building MAE 3.28 → 2.48 m (−24%)
+- Building RMSE 7.89 → 6.69 m (−15%)
+- 30 m+ MAE 10.0 → 5.5 m (−45%), bias −9.9 → −4.6 m
+- Floor ±1: 79 → 87%
+
+**Decision:** D is the Phase 2 recipe. Remaining before gate G1:
+1. U-Net baseline (same schedule)
+2. Second seed of D (confirm)
+3. D on DFC19 tile (comparison with published work) and DFC23 cross-city (New Delhi)
