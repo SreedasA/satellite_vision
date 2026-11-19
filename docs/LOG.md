@@ -124,3 +124,23 @@ Config `p2/b_tall_weight.yaml` = A + height-weighted L1 (`w_tall: 1.0`, ref 10 m
 4. Caveat: one seed per config, one 150-tile test sample. Differences of 3–13% are suggestive, not conclusive. Repeat the best config with a second seed before Phase 2 is closed.
 
 **Decision:** B is the current best for the project goal (building heights / LoD1). C (higher LR) builds on B as planned.
+
+## 2026-11-19 · Phase 2 run C: `p2c_dfc23_block` (run by you, offline)
+
+Config `p2/c_higher_lr.yaml` = B + 2× learning rates (encoder 5e-6 → 1e-5, head 5e-5 → 1e-4). These are the **only** config differences from B. Took 54 min; best checkpoint at epoch 21.
+
+| DFC23 block test | MAE | RMSE | δ1 | bias | B-RMSE | B-bias | bld MAE | floor ±1 | <10 m MAE / bias | 10–30 m MAE / bias | 30+ m MAE / bias |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| A (30 ep) | **1.90** | **5.14** | 0.50 | −0.40 | 7.18 | −1.06 | 2.79 | 0.84 | 2.06 / −0.81 | 3.24 / −1.77 | 7.23 / −6.92 |
+| B (A + w_tall) | 2.06 | 5.32 | 0.53 | +0.17 | 7.10 | −0.28 | 2.65 | 0.85 | 2.11 / −0.41 | 2.94 / −1.27 | 6.32 / −5.63 |
+| **C (B + 2× LR)** | 2.03 | 5.25 | **0.56** | +0.30 | **6.92** | **−0.01** | **2.48** | **0.87** | **2.03 / +0.05** | **2.69 / −0.90** | **5.97 / −5.11** |
+
+Validation select score (lower = better): best A 8.73 / B 8.65 / **C 8.32**; mean of last 5 epochs 8.95 / 8.71 / **8.57**. Epoch-to-epoch noise over the last 10 epochs is σ ≈ 0.13, so C's gain is about 1–3 σ: probably real, not conclusive.
+
+**Findings**
+1. **C is best on every building metric:** per-building MAE −6% vs B (2.65 → 2.48 m), 10–30 m MAE −9%, 30 m+ MAE −6%. Building-pixel bias is now ~0. Floors ±1: 87%.
+2. **All-pixel metrics sit between A and B** (MAE 2.03, RMSE 5.25), but overall bias keeps creeping up (+0.30 m): the model slightly over-predicts non-building areas.
+3. **Cumulative vs Phase 1:** per-building MAE 3.28 → 2.48 m (−24%); 30 m+ MAE 10.0 → 6.0 m (−41%); 30 m+ bias −9.9 → −5.1 m. The tallest buildings are still the main weakness.
+4. With a higher LR, validation is noisier early (epochs 1–3) but converges well. The model was likely under-trained at the Phase 1 LR.
+
+**Decision:** C is the new best. Next: **D** (C + small MSE term) per plan. Then the **U-Net baseline** (gate G1) and a second seed of the winner.
