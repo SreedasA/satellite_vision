@@ -130,6 +130,15 @@ def test_unet_shapes_and_loading(tmp_path):
             assert y.shape == (1, *hw) and float(y.min()) >= 0
     assert any(n.startswith(net.encoder_prefix) for n, _ in net.named_parameters())
 
+    # Padding is symmetric with a margin on every side (bottom/right-only padding caused border
+    # spikes on DFC19 1022 px tiles).
+    from sat2city.models.unet import pad_amounts
+
+    for h, w in ((1022, 1022), (518, 518), (70, 98)):
+        l, r, t, b = pad_amounts(h, w, margin=32)
+        assert min(l, r, t, b) >= 32 and abs(l - r) <= 1 and abs(t - b) <= 1
+        assert (h + t + b) % 32 == 0 and (w + l + r) % 32 == 0
+
     torch.save(net.state_dict(), tmp_path / "best.pt")
     (tmp_path / "config.json").write_text(json.dumps({"model": "unet:resnet34"}))
     loaded = load_model(tmp_path / "best.pt", device="cpu")

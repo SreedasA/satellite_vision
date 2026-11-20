@@ -12,6 +12,12 @@ import torch.nn.functional as F
 from torch import nn
 
 
+def pad_amounts(h: int, w: int, margin: int, stride: int = 32) -> tuple[int, int, int, int]:
+    """(left, right, top, bottom): at least `margin` on every side, split evenly, total a multiple of `stride`."""
+    ph, pw = (-(h + 2 * margin)) % stride, (-(w + 2 * margin)) % stride
+    return margin + pw // 2, margin + pw - pw // 2, margin + ph // 2, margin + ph - ph // 2
+
+
 class _Up(nn.Module):
     def __init__(self, c_in: int, c_skip: int, c_out: int):
         super().__init__()
@@ -40,13 +46,19 @@ class UNetHeight(nn.Module):
         self.ups = nn.ModuleList(ups)
         self.head = nn.Sequential(nn.Conv2d(c, 16, 3, padding=1), nn.ReLU(inplace=True), nn.Conv2d(16, 1, 1))
 
+    PAD_MARGIN = 32  # px of reflect padding on every side
+
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
+        """Reflect-pad symmetrically with a fixed margin (then up to a multiple of 32), predict, crop back.
+        Padding only bottom/right by a few px made the borders behave differently at eval (1022 px
+        tiles, 2 px pad) than in training (518 px crops, 26 px pad): predictions spiked up to 170 m and
+        validation RMSE rose from 4.2 to 12.8 m on DFC19 (docs/LOG.md, 19 Nov)."""
         h, w = pixel_values.shape[-2:]
-        ph, pw = (-h) % 32, (-w) % 32
-        x = F.pad(pixel_values, (0, pw, 0, ph), mode="reflect") if (ph or pw) else pixel_values
+        left, right, top, bottom = pad_amounts(h, w, self.PAD_MARGIN)
+        x = F.pad(pixel_values, (left, right, top, bottom), mode="reflect")
         feats = self.encoder(x)
         y = feats[-1]
         for up, skip in zip(self.ups, reversed(feats[:-1])):
             y = up(y, skip)
         y = F.interpolate(self.head(y), size=x.shape[-2:], mode="bilinear", align_corners=False)
-        return F.relu(y[:, 0, :h, :w])
+        return F.relu(y[:, 0, top:top + h, left:left + w])

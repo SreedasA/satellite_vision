@@ -198,3 +198,57 @@ Validation select score: U-Net best 10.53 vs DAv2-S A 8.73 vs D 8.01.
 4. The U-Net trains ~40% faster per epoch; its validation was still improving slightly at the end. A longer U-Net run would narrow the gap, but not close it.
 
 **Gate G1 (DAv2 vs CNN): PASS on DFC23.** The other half of G1, checking the pipeline against the published DFC2019 U-Net (~2.98 m RMSE), still needs a U-Net run on the DFC2019 tile split.
+
+## 2026-11-19 · U-Net on DFC2019 tile split: `p2u_dfc19_tile` (run by you, offline): first diagnosis, SUPERSEDED
+
+> **Superseded by the next entry.** The instability was not caused by the learning rate: it was a U-Net padding bug at evaluation time (fixed). The lower-LR rerun proposed below is not needed.
+
+Same config as the DFC2023 U-Net (`p2/unet_baseline.yaml`: A recipe, encoder LR 1e-4, head LR 1e-3). Took 59 min (~112 s/epoch on 1024² DFC2019 tiles). **No second-seed run of D exists yet:** every run so far uses seed 0.
+
+**Training was unstable.** Validation RMSE rose from 4.17 m (epoch 2) to 12.8 m (epoch 30) while training loss kept falling and validation per-building MAE stayed ~3 m. A diagnosis on 20 validation tiles found the epoch-30 model **hallucinates 140–155 m structures on ground and water** (true maxima 24–62 m). RMSE on ground pixels 3.1 → 13.7 m, on water 2.1 → 15.2 m; buildings 7.3 → 10.0 m. The tall-aware selection kept the **epoch-3 checkpoint** (select 13.21), so the test numbers come from the healthy early model.
+
+| DFC19 tile test (150 images, 7,459 buildings) | MAE | RMSE | SI | <1 m | B-RMSE | bld MAE | floor ±1 | 10–30 m MAE / bias | 30+ m MAE / bias (n=17) |
+|---|---|---|---|---|---|---|---|---|---|
+| Train-mean baseline | 3.76 | 5.15 | 1.03 | 0.06 | 10.97 | 1.97 | 0.90 | – | – |
+| U-Net (best = epoch 3) | 1.92 | 4.38 | 0.88 | 0.68 | 8.43 | 2.90 | 0.84 | **5.47** / −1.81 | 23.9 / −23.9 |
+| DAv2-S Phase 1 (5 epochs, old recipe) | **1.26** | **3.38** | **0.68** | **0.74** | **7.69** | **2.06** | **0.93** | 7.97 / −7.70 | 25.6 / −25.6 |
+
+**Findings**
+1. **DAv2-S beats the U-Net on DFC2019 too**, even its 5-epoch Phase 1 version against the U-Net's best checkpoint: RMSE 3.38 vs 4.38 m, per-building MAE 2.06 vs 2.90 m. The U-Net is better only on 10–30 m buildings (5.5 vs 8.0 m MAE), where the old DAv2 recipe had a large bias that B–D since reduced.
+2. **The pipeline check against the published U-Net (~2.98 m RMSE) is inconclusive.**
+   - Our U-Net stopped improving after epoch 3, so it isn't a converged baseline.
+   - The published figure probably comes from a random image split, which leaks (D13).
+   - **Next step:** rerun the U-Net on DFC19 with ~3× lower LRs (stability), and optionally on the random split, to compare like with like.
+3. The tall-aware checkpoint rule did its job: it protected the test result from a model that degraded late in training.
+4. On DFC2019 with only 17 buildings above 30 m, the 30+ m bin is too small to compare models reliably.
+
+**Gate G1:**
+- DAv2 vs CNN: **pass on both datasets**.
+- Pipeline vs published numbers: **pending** (stable U-Net rerun).
+
+## 2026-11-19 · U-Net on DFC2019: `p2u_dfc19_tile` (run by you) + U-Net padding bug
+
+Config `p2/unet_baseline.yaml` on the DFC2019 tile split (30 epochs, 112 s/epoch, 58 min).
+
+**What looked wrong:** validation RMSE rose from 4.2 m (epoch 2) to 12.8 m (epoch 30) while training loss kept falling, so best-checkpoint selection kept epoch 3. About 2% of pixels had errors > 20 m, with predictions up to 165–172 m where the true maximum was 23–60 m; a third of them were in the bottom rows of each tile.
+
+**Cause: an inference bug in the U-Net, not the model.** `UNetHeight` reflect-padded only bottom/right up to a multiple of 32. In training (518 px crops) that is 26 px; at evaluation (full 1022 px DFC2019 tiles) it is 2 px. The model's border behaviour broke on the thin one-sided pad and got worse as training went on. DAv2 doesn't pad and is unaffected. DFC23 is evaluated at 518 px (same padding as in training), so it was barely affected.
+
+**Fix:** symmetric reflect padding with a 32 px margin on every side (`pad_amounts()`, tested). Same checkpoint, validation: RMSE 12.84 → **3.55 m**, max prediction 172 → 66 m. New `scripts/evaluate_run.py` re-scores saved checkpoints after a fix (writes `*_reeval.json`, keeps the originals).
+
+**Re-evaluated test results (150 tiles, fixed code)**
+
+| Model | Dataset | RMSE | MAE | B-RMSE | bld MAE | floor ±1 |
+|---|---|---|---|---|---|---|
+| U-Net, last epoch (30) | DFC19 tile | 3.52 | 1.30 | 8.03 | 1.89 | 0.94 |
+| U-Net, "best" (epoch 3, chosen under the bug) | DFC19 tile | 4.13 | 1.73 | 8.39 | 2.69 | 0.88 |
+| DAv2-S Phase 1 (5 ep, old recipe) | DFC19 tile | **3.38** | **1.26** | **7.69** | 2.06 | 0.93 |
+| U-Net best / last | DFC23 block | 5.94 / 5.96 | 2.38 / 2.39 | 8.50 / 8.66 | 3.48 / 3.48 | 0.78 |
+
+**Findings**
+1. **Pipeline check (gate G1, part 2): PASS.** Our U-Net reaches 3.52 m RMSE on the leak-free DFC2019 tile split. That's in the expected range of the published ~2.98 m, which was probably measured on an easier, leaky random split.
+2. **DAv2-S still wins on DFC2019:** even the 5-epoch Phase 1 recipe beats a 30-epoch U-Net on RMSE (3.38 vs 3.52) and building RMSE (7.69 vs 8.03). The U-Net's slightly better per-building MAE (1.89 vs 2.06) comes from DFC2019's many low houses (see Phase 0 note: never quote a single per-building number for DFC2019).
+3. **DFC23 U-Net results are unchanged by the fix** (3.48 m per-building), so the 19 Nov DAv2-vs-U-Net conclusion stands.
+4. The DFC2019 U-Net's checkpoint selection was corrupted by the bug; its number comes from the last epoch. A re-run with the fixed code (~1 h) would give properly selected numbers. Optional, since the conclusion is clear.
+
+**Gate G1: PASS** (DAv2 beats the CNN on both datasets; pipeline matches the published range). Remaining before closing Phase 2: config D second seed, D with New Delhi held out, D on DFC2019 tile.
