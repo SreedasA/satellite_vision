@@ -252,3 +252,58 @@ Config `p2/unet_baseline.yaml` on the DFC2019 tile split (30 epochs, 112 s/epoch
 4. The DFC2019 U-Net's checkpoint selection was corrupted by the bug; its number comes from the last epoch. A re-run with the fixed code (~1 h) would give properly selected numbers. Optional, since the conclusion is clear.
 
 **Gate G1: PASS** (DAv2 beats the CNN on both datasets; pipeline matches the published range). Remaining before closing Phase 2: config D second seed, D with New Delhi held out, D on DFC2019 tile.
+
+## 2026-11-20 · Config D, second seed: `p2d_dfc23_block_s1` (run by you, offline)
+
+Same config as `p2d_dfc23_block` with `--seed 1` (training seed only; validation and test samples are fixed). 30 epochs, ~106 s/epoch, 54 min.
+
+| DFC23 block test (150 tiles, 9,284 buildings) | seed 0 | seed 1 | spread |
+|---|---|---|---|
+| per-building MAE | 2.48 | 2.51 | 0.03 |
+| building-pixel RMSE | 6.69 | 6.75 | 0.06 |
+| all-pixel RMSE | 5.03 | 4.98 | 0.05 |
+| floor ±1 | 0.866 | 0.863 | 0.003 |
+| MAE <10 / 10–30 / 30+ m | 2.03 / 2.72 / 5.52 | 1.97 / 2.85 / 5.78 | – |
+| bias 10–30 / 30+ m | −0.77 / −4.64 | −1.24 / −5.14 | – |
+| overall pixel bias | +0.38 | +0.17 | – |
+| best epoch (val select) | 27 (8.01) | 27 (8.19) | – |
+
+**Findings**
+1. **Seed noise ≈ 0.03 m per-building MAE** (two seeds, rough). The A→B (0.14) and B→C (0.17) gains are real; C vs D (2.48 vs 2.48) is a tie overall, and D is kept for its tall-building and building-RMSE gains.
+2. **Tall-building under-prediction is systematic** (30 m+ bias −4.6 / −5.1 m with both seeds) → Phase 3 failure gallery; candidate v1.1 fixes: higher `w_tall`, height-range calibration.
+3. **The "rising overall bias" was mostly seed noise** (+0.38 vs +0.17 m): dropped as a concern.
+4. Both seeds plateau from epoch ~21 and select epoch 27: 30 epochs is enough.
+5. Report D on DFC23 block as **per-building MAE 2.50 ± 0.02 m, building RMSE 6.72 m, floor ±1 86.5%** (mean of 2 seeds).
+
+## 2026-11-20 · Config D on New Delhi held out and on DFC2019: `p2d_dfc23_cross_city`, `p2d_dfc19_tile` (run by you, offline)
+
+Both seed 0, 30 epochs, code at 62d1d02. Cross-city: ~120 s/epoch, 61 min; validation comes from the training cities. DFC19 tile: ~190 s/epoch, 95 min.
+
+**DFC23 cross-city (New Delhi unseen; 131 tiles, 5,010 buildings)**
+
+| Model | RMSE | B-RMSE | B bias | bld MAE | floor ±1 | <10 m MAE / bias | 10–30 m MAE / bias | 30+ m MAE / bias (n=198) |
+|---|---|---|---|---|---|---|---|---|
+| Phase 1 (5 ep) | 5.38 | 10.02 | – | 6.15 | 0.48 | – | – / −6.96 | – / −19.4 |
+| **Config D (30 ep)** | 5.09 | 9.47 | −6.38 | **5.76** | 0.50 | 2.42 / −0.11 | 6.60 / −6.54 | 17.3 / −17.3 |
+
+**DFC2019 tile split (150 tiles, 7,459 buildings)**
+
+| Model | MAE | RMSE | B-RMSE | bld MAE | floor ±1 | 10–30 m MAE / bias (n=318) | 30+ m MAE / bias (n=17) |
+|---|---|---|---|---|---|---|---|
+| U-Net, last epoch (fixed padding) | 1.30 | 3.52 | 8.03 | 1.89 | 0.94 | – | – |
+| DAv2-S Phase 1 (5 ep) | 1.26 | 3.38 | 7.69 | 2.06 | 0.93 | 7.97 / −7.70 | 25.6 / −25.6 |
+| **DAv2-S config D (30 ep)** | **1.21** | **3.18** | **7.12** | **1.62** | **0.95** | 5.79 / −5.31 | 20.0 / −20.0 |
+
+**Findings**
+1. **DFC2019: config D is the best model on every metric**, now including per-building MAE (1.62 vs U-Net 1.89). RMSE 3.18 m on the leak-free tile split is close to the published ~2.98 m (probably a leaky random split). The DFC23-tuned recipe transfers to a different sensor and region without changes.
+2. **New Delhi: the recipe helps only a little out of domain.** Per-building MAE 6.15 → 5.76 m (−6%), against −24% in-domain (3.28 → 2.48 m). The generalisation gap is now the biggest weakness: 5.76 vs 2.50 m in-domain.
+3. **The New Delhi error is almost all under-prediction of mid- and high-rise buildings.** Low buildings are fine (2.4 m MAE, bias −0.1 m). In the 10–30 m bin, MAE 6.60 against bias −6.54 means nearly every building is predicted about 2 floors too low; every 30 m+ building is under-predicted (bias = −MAE = −17.3 m). New Delhi is also 66% 10–30 m buildings, against 45% in the block test set.
+4. Validation (training cities) does not see this gap (val select 10.2, smooth curve). City-level held-out testing is needed to report generalisation honestly (S3).
+5. DFC2019 validation was noisier (select 9.8–12.8 through training); the tall-aware rule picked epoch 16. With only 17 buildings above 30 m, the DFC2019 tall-building bin stays too small to rank models.
+
+**Phase 2: complete.** Recipe = config D. Headline numbers: DFC23 block 2.50 ± 0.02 m per-building MAE (2 seeds); DFC19 tile RMSE 3.18 m; New Delhi unseen 5.76 m.
+
+Carried into Phase 3:
+- New Delhi failure analysis: is the under-prediction a global scale offset (fixable by per-city linear calibration) or appearance-dependent? Check by fitting a single scale factor on a few New Delhi tiles and re-scoring the rest.
+- Tall-building under-prediction on all datasets (failure gallery; v1.1 fixes).
+- Controlled leakage study (D13), JAX→OMA, viewer polish, gate G2.
