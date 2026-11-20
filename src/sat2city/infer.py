@@ -12,7 +12,7 @@ local frame around --origin lon,lat with --gsd metres/pixel (approximate placeme
 
 Usage:
   python -m sat2city.infer --checkpoint RUN/best.pt --dataset dfc23 --ids SV_NewDelhi_...tif [...] --out web/data/x.geojson
-  python -m sat2city.infer --checkpoint RUN/best.pt --image any.tif --footprints height --origin -81.66,30.33 --gsd 1.3 --out x.geojson
+  python -m sat2city.infer --checkpoint RUN/best.pt --image any.tif --footprints height --origin -81.66,30.33 --gsd 0.3 --out x.geojson
 """
 
 from __future__ import annotations
@@ -109,7 +109,7 @@ def main():
     ap.add_argument("--footprints", choices=["reference", "height"], default="reference")
     ap.add_argument("--min-height", type=float, default=2.5)
     ap.add_argument("--origin", default="-81.6581,30.3270", help="lon,lat for non-georeferenced images")
-    ap.add_argument("--gsd", type=float, default=1.3)
+    ap.add_argument("--gsd", type=float, default=0.3, help="m/pixel for local placement (DFC19 0.3)")
     ap.add_argument("--out", required=True, help="output GeoJSON (height GeoTIFFs go next to it)")
     args = ap.parse_args()
 

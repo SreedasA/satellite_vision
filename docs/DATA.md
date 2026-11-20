@@ -22,7 +22,7 @@ Local storage: `S:\sat2city-data\` (outside OneDrive; set in `configs/paths.yaml
   - `<CITY>_<TILE>_<VIEW>_RGB.tif`
   - `..._AGL.tif`: height above ground in metres; NaN = nodata (the official metric maps NaN → -999)
   - `..._CLS.tif`: LAS codes 2 ground, 5 trees, 6 building, 9 water, 17 bridge/elevated road, 65 unlabeled
-- **Geometry:** images are **unrectified single views** (off-nadir). AGL/CLS are given per view, in that view's image geometry. WorldView-3, ~1.3 m GSD (pan-sharpened).
+- **Geometry:** images are **unrectified single views** (off-nadir). AGL/CLS are given per view, in that view's image geometry. WorldView-3 pan-sharpened RGB, **~0.3 m GSD** (measured on the imagery 20 Nov: cars ~15 px, parking bays ~8 px; the files carry no pixel size). An earlier note said ~1.3 m, which is the MSI band resolution; that was wrong and made the 3D viewer draw DFC19 buildings ~4x too wide.
 - **Official metric:** mIoU-3 (a true positive needs the correct class *and* |AGL error| < 1 m).
 - **Verified 2026-11-17:**
   - 2,783 triplets of 1024² (JAX 1,015, OMA 1,768).

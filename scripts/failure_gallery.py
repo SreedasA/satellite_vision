@@ -46,7 +46,7 @@ class Acc:
 
 
 def per_building_table(b, px_m2):
-    """Footprint size in m² (pixel area x GSD²: DFC19 ~1.3 m per docs/DATA.md, DFC23 0.5 m)."""
+    """Footprint size in m² (pixel area x GSD²: DFC19 0.3 m, DFC23 0.5 m)."""
     out = {}
     for lo, hi in ((2, 10), (10, 30), (30, 999)):
         for alo, ahi, aname in ((0, 100, "small <100 m²"), (100, 500, "mid 100-500 m²"), (500, 1e12, "large >500 m²")):
@@ -134,7 +134,7 @@ def main():
     res = {"run": args.run, "dataset": ds, "n_tiles": len(ids), "by_class": {k: v.out() for k, v in cls_acc.items()},
            "building_edge": edge_acc.out(), "building_interior": inner_acc.out(),
            "by_sensor_building_pixels": {k: v.out() for k, v in sensor_acc.items()},
-           "per_building_by_height_and_size": per_building_table(b, 1.69 if ds == "dfc19" else 0.25)}
+           "per_building_by_height_and_size": per_building_table(b, 0.09 if ds == "dfc19" else 0.25)}
     tall = np.where(b["ref"] >= 30)[0]
     worst = tall[np.argsort(b["pred"][tall] - b["ref"][tall])][:10]
     res["largest_tall_misses"] = [{"tile": ids[int(b["tile"][i])], "ref": round(float(b["ref"][i]), 1),

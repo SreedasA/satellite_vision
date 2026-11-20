@@ -63,3 +63,6 @@ Short records: date · decision · why · alternatives considered.
 
 ### D17 · 2026-11-20 · Leakage study: same test views, same training-set size
 Refines D13. Model A = the existing `p2d_dfc19_tile` run; model B swaps 200 random training views for the 200 other views of the test tiles, so both train on 1,997 views and only B has seen the test locations. Both are scored on the same 205 test views. One new run (B) instead of two.
+
+### D18 · 2026-11-20 · Report DFC23 on `dfc23_block_clean`; DFC19 GSD is 0.3 m
+The block split's test tiles overlap training tiles (40% of tiles, 15% of pixels; tiles are 256 m wide, ~120 m apart). Re-scoring on the 170 test tiles with no overlap changes no conclusion (D: 2.45 / 2.49 m), so models are not retrained; all DFC23 headline numbers come from the clean test set from now on. DFC19 pixel size measured at ~0.3 m (was wrongly 1.3 m); heights and metrics unaffected, 3D placement and areas fixed.

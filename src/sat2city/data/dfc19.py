@@ -18,6 +18,11 @@ from pathlib import Path
 
 NAME_RE = re.compile(r"^(?P<city>[A-Z]{3})_(?P<tile>\d+)_(?P<view>\d+)_(?P<kind>RGB|AGL|CLS)\.tif$")
 
+# Pixel size of the pan-sharpened WorldView-3 RGB tiles. The files carry no georeferencing; measured on
+# the imagery (cars ~15 px long, parking bays ~8 px wide), 20 Nov. The earlier 1.3 m was the MSI band
+# resolution, not these tiles (docs/LOG.md, project audit).
+GSD = 0.3
+
 LAS = {"ground": 2, "trees": 5, "building": 6, "water": 9, "bridge": 17, "unlabeled": 65}
 
 

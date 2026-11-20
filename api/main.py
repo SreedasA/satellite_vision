@@ -6,6 +6,8 @@ Endpoints:
   GET  /health                      model + device info
   POST /predict  (multipart file)   RGB image -> LoD1 GeoJSON + stats
        query: footprints=height (only option for uploads), min_height, gsd, origin_lon, origin_lat
+       gsd only places the result on the globe; the image is NOT resampled, so heights are only
+       meaningful for imagery near the model's training resolution (DFC23 0.5 m, DFC19 0.3 m).
   GET  /benchmark/{dataset}/tiles    test tiles for the viewer's picker (grouped by city / split)
   GET  /benchmark/{dataset}/{tile}  benchmark tile -> GeoJSON with reference footprints
 CORS is open so the static Cesium viewer (served from another origin) can call it.
@@ -26,6 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 
 from sat2city.config import load_paths
+from sat2city.data.dfc19 import GSD as DFC19_GSD
 from sat2city.eval.benchmark import make_bench
 from sat2city.eval.metrics import label_buildings
 from sat2city.infer import buildings_for, load_model, predict_large
@@ -67,7 +70,7 @@ def health():
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...), min_height: float = Query(2.5, ge=0),
-                  gsd: float = Query(1.3, gt=0), origin_lon: float = -81.6581, origin_lat: float = 30.3270):
+                  gsd: float = Query(0.5, gt=0), origin_lon: float = -81.6581, origin_lat: float = 30.3270):
     data = await file.read()
     suffix = Path(file.filename or "upload").suffix.lower()
     with tempfile.TemporaryDirectory() as tmp:
@@ -164,11 +167,11 @@ def benchmark_tile(dataset: str, tile: str, min_height: float = 2.0):
     rgb, _, _, labels = bench.load(tile)
     height = predict_large(model(dataset), rgb, _state["device"])
     origin = LOCAL_ORIGIN.get(tile[:3], LOCAL_ORIGIN["JAX"])
-    feats, placement = buildings_for(height, rgb_path, labels, origin, 1.3, min_height)
+    feats, placement = buildings_for(height, rgb_path, labels, origin, DFC19_GSD, min_height)
     return {"type": "FeatureCollection", "features": feats,
             "metadata": summary(feats) | {"footprints": "reference", "placement": placement, "tile": tile,
                                           "dataset": dataset, "checkpoint": Path(_state["ckpt"]).parent.name,
-                                          "bounds": _bounds(rgb_path, height.shape, origin, 1.3),
+                                          "bounds": _bounds(rgb_path, height.shape, origin, DFC19_GSD),
                                           "seconds": round(time.perf_counter() - t0, 2)}}
 
 

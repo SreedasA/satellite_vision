@@ -114,7 +114,7 @@ Each step lists:
 - **Questions:** Do Track 1 images carry a CRS/transform or RPCs we can use to place buildings on the Cesium globe?
 - **Best case:** a usable transform → real lon/lat on the globe.
 - **Worst case:** unrectified images with no usable geo-transform.
-- **Plan B:** a **local ENU frame**. Convert pixel coordinates to metres (GSD ≈ 1.3 m) around an approximate city origin (Jacksonville / Omaha), clearly labelled as approximate placement.
+- **Plan B:** a **local ENU frame**. Convert pixel coordinates to metres (GSD ≈ 0.3 m; corrected from 1.3 m on 20 Nov) around an approximate city origin (Jacksonville / Omaha), clearly labelled as approximate placement.
 - **Plan C:** render the 3D scene in **three.js** (no globe needed). Keep Cesium for DFC23, if its tiles are georeferenced.
 - **Time box:** 2 h.
 

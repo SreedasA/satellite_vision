@@ -20,7 +20,7 @@ from sat2city.eval.benchmark import load_split, make_bench, predict_tile, sample
 from sat2city.models import build_model
 
 F, R = 4, 12  # downsample factor, max shift in downsampled cells
-GSD = {"dfc19": 1.3, "dfc23": 0.5}  # m per pixel (docs/DATA.md)
+GSD = {"dfc19": 0.3, "dfc23": 0.5}  # m per pixel (DFC19 measured, see sat2city.data.dfc19.GSD)
 
 
 def pool(a):

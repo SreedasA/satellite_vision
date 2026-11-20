@@ -350,15 +350,15 @@ Config D best checkpoints, each run's own test sample. Pictures (RGB | reference
 
 **DFC2023:** block test building edges +0.78 m bias vs interiors +0.01 m (edges blur outward); New Delhi edges −5.8 / interiors −6.6 m (the whole building is low, not just its edges). Building pixels by sensor, New Delhi: Gaofen-2 MAE 9.9 m vs SuperView-1 7.2 m.
 
-**Per building by height and footprint size (DFC23 block):** within each height bin the error barely depends on footprint size (30 m+: small 5.1, mid 6.0, large 5.1 m MAE). On DFC2019 the 10–30 m buildings with small footprints are worst (MAE 10.0 m, bias −9.7 m, n=76), mostly thin parts of larger structures.
+**Per building by height and footprint size (DFC23 block):** within each height bin the error barely depends on footprint size (30 m+: small 5.1, mid 6.0, large 5.1 m MAE). On DFC2019 the 10–30 m buildings with small footprints (< 100 m², at the corrected 0.3 m GSD) are worst (MAE 9.0 m, bias −8.7 m, n=108), mostly thin parts of larger structures.
 
 **Findings**
 1. **Trees are under-predicted (−1.5 m), not over-predicted.** The earlier worry about trees inflating the bias is not supported.
 2. **Bridges and elevated roads are the worst surface** (−6.3 m bias): the model reads them as ground. They aren't buildings, so LoD1 output is unaffected, but flood/shadow views would be.
 3. **Tall-building misses have two causes:**
    - **Compression:** buildings over 60 m come out at about 40% of their height on DFC23 (median pred/ref 0.40; 0.92 for 30–60 m). The model rarely predicts above ~40 m.
-   - **Off-nadir lean on DFC2019 downtown tiles** (JAX_164): the model places tall buildings where they appear in the angled view, while the reference is in nadir geometry, so the error shows as red/blue pairs. Whole-tile shifts don't fix it (best shift removes only 1% of building error on DFC2019, 7% on DFC23 block, mostly Berlin), because the lean grows with height and differs per building. Learning it needs offset-aware labels (v2.0 "offset-aware footprints").
-4. **No hallucinated towers.** The largest over-predictions are the lean pairs above and reference artefacts (a crane-like diagonal structure in JAX_164), not invented buildings.
+   - ~~Off-nadir lean on DFC2019 downtown tiles~~ **Corrected by the audit below:** the DFC2019 reference *is* registered to each view (height contours follow the roofs in the image). The red/blue pairs on JAX_164 are neighbouring buildings of different heights blended together, plus a reference artefact (a jagged 25 m+ streak across the convention-centre roof). Consistent with this, whole-tile shifts remove only 1% of building error on DFC2019 (7% on DFC23 block, mostly Berlin).
+4. **No hallucinated towers.** The largest over-predictions are blended neighbours and reference artefacts (a crane-like diagonal structure in JAX_164), not invented buildings.
 5. **Some "tall misses" are footprint fragments** (1–40 px instances at tile edges with a tall reference median). They are few, but they inflate the 30 m+ error on small bins.
 6. **New Delhi:** dense 8–12-storey apartment blocks are predicted at about half height; the shape is right, the scale is wrong (consistent with the 1.47 calibration factor). A Gaofen-2 construction site is predicted as ~15 m tall.
 
@@ -376,3 +376,39 @@ Config D best checkpoints, each run's own test sample. Pictures (RGB | reference
 Tests: 47 pass (new: tile picker, per-dataset checkpoint).
 
 **Remaining in Phase 3:** your two runs (leakage model B, Jacksonville → Omaha), then gate G2.
+
+## 2026-11-20 · Project audit before the Phase 3 runs
+
+Full review of code, data assumptions and decisions. Checks were run on data, not assumed.
+
+**Errors found and fixed**
+1. **DFC2019 pixel size was wrong: ~0.3 m, not 1.3 m.** The files carry no pixel size; measured on the imagery (cars ~15 px long, parking bays ~8 px wide). 1.3 m is the WorldView-3 MSI band resolution, mixed up in the Phase 0 research note. **Heights and all accuracy metrics are unaffected** (per-pixel, vertical). Affected: 3D placement of DFC19 tiles (buildings drawn ~4.3x too wide for their height), `area_m2` (~19x too large), the failure gallery's DFC19 size table and the shift check's metres. Fixed in one constant (`sat2city.data.dfc19.GSD = 0.3`) used by the API, `infer.py`, `export_demo.py`, `shift_check.py` and `failure_gallery.py`; demo re-exported; DATA/RESEARCH/ROADMAP corrected.
+2. **The DFC2023 block split has spatial overlap between train and test.** Tiles are 256 m wide but their centres are ~120 m apart, and blocks were assigned by tile centre. 112 of 282 test tiles (40%) and 111 of 277 val tiles overlap a training tile (93 test tiles by > 25%; mean 15% of test pixels). The cross-city (New Delhi) test has **zero** overlap. **Effect measured:** overlapping tiles are *not* easier (per-building MAE 2.58 vs 2.42 m on clean tiles), and re-scoring on the 170 clean test tiles (`dfc23_block_clean`) leaves every conclusion unchanged:
+
+| Run | per-building MAE (original 150 / clean 170 tiles) | building RMSE (clean) | floor ±1 (clean) |
+|---|---|---|---|
+| D seed 0 | 2.48 / **2.45** | 5.59 | 0.867 |
+| D seed 1 | 2.51 / **2.49** | 5.58 | 0.862 |
+| C | 2.48 / 2.44 | 5.75 | 0.866 |
+| U-Net | 3.48 / 3.47 | 7.09 | 0.769 |
+| Phase 1 DAv2-S | 3.28 / 3.13 | 6.44 | 0.797 |
+
+   **Decision:** `dfc23_block_clean` (170 test tiles, no train overlap) is the reported DFC23 benchmark from now on: **D = 2.47 ± 0.02 m per-building MAE** (2 seeds). Validation still overlaps training (it only selects checkpoints); not worth re-running.
+3. **My failure-gallery explanation of the DFC2019 red/blue pairs (off-nadir lean) was wrong** (see the corrected entry above): the reference follows the roofs in each view.
+
+**Checked and found sound**
+- Recipe selection A→D used **validation**, not test. Seeds: Python/NumPy/torch seeded; DataLoader workers get distinct seeds.
+- Evaluation and viewer use the same inference path for benchmark tiles (one window at native size). DFC23 512 px tiles are resized to 518 in both training and evaluation (consistent, +1.2%).
+- Both DFC23 sensors are uint8 RGB, so no per-image normalisation differs between SuperView-1 and Gaofen-2.
+- Losses, tall weights, LR schedule, checkpoint/resume and metrics (delta only where ref ≥ 1 m; per-building excludes footprints with ref median < 2 m, D10) behave as documented.
+- New Delhi calibration survives a stricter test: excluding every evaluation tile that overlaps a fitting tile (all 131 New Delhi tiles overlap a neighbour) gives 4.23 m with 5 tiles (was 4.24).
+
+**Logic and goal issues to act on (not code bugs)**
+1. **Published comparison was framed against the wrong number.** S1's reference is Depth2Elevation on DFC2019: direct DAM fine-tune 2.60 m, D2E 2.45 m RMSE (ViT-B, test at 1022 px, probably a random split). We quoted the U-Net's ~2.98 m. Report 3.18 m (DAv2-S, leak-free tile split) against 2.60 / 2.45 m, and let the leakage study show how much of the gap is the split.
+2. **The leakage study has one seed per model.** DFC19 seed noise is unknown (DFC23: ~0.03 m per-building MAE). Rule fixed before the run: if |B − A| in building RMSE < 0.15 m, call it inconclusive and run a second seed of B.
+3. **S3 "cross-dataset" (DFC19 ↔ DFC23) is in the success criteria but not in the Phase 3 task list.** No training needed: score each model on the other dataset, resampling images to the training GSD (0.3 vs 0.5 m).
+4. **Uploads (`POST /predict`) don't resample to the model's training resolution.** `gsd` only places the result on the globe. Monocular height depends on image scale (New Delhi lesson), so arbitrary imagery needs resampling to 0.5 m before prediction (Phase 4 API work). Documented in the endpoint for now.
+5. **"One satellite image → 3D city" depends on reference footprints.** Benchmark tiles use annotated footprints; uploads use height-threshold blobs, which are poor. The v1.0 README must say so; a footprint model is the v2.0 building-mask head.
+6. **Licence scope:** besides DFC2023 imagery, the *weights* of every DFC2023-trained model come from data with unchecked terms. Until the licence is checked, the public demo and HF Space should use the DFC2019 model (CC-BY data).
+7. **Calibration claim wording:** "5 labelled tiles" means 5 tiles with *height* references (e.g. a stereo or LiDAR patch, or surveyed floor counts), not just footprints.
+8. DFC2019 tiles carry no coordinates, so whether neighbouring DFC2019 tiles overlap can't be checked. Caveat for the tile split.

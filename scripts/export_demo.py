@@ -15,11 +15,11 @@ import numpy as np
 from PIL import Image
 
 from sat2city.config import REPO_ROOT, load_paths
+from sat2city.data.dfc19 import GSD
 from sat2city.eval.benchmark import load_split, make_bench
 from sat2city.geo.lod1 import instances_to_features, pixel_to_lonlat
 from sat2city.infer import load_model, predict_large
 
-GSD = 1.3  # DFC19, m per pixel (docs/DATA.md)
 ORIGIN = {"JAX": (-81.6581, 30.3270), "OMA": (-95.9345, 41.2565)}  # same approximate origins as the API
 ATTRIBUTION = "Imagery and reference: DFC2019 / US3D (JHU/APL, IARPA), CC-BY. Le Saux et al. 2019."
 
