@@ -307,3 +307,28 @@ Carried into Phase 3:
 - New Delhi failure analysis: is the under-prediction a global scale offset (fixable by per-city linear calibration) or appearance-dependent? Check by fitting a single scale factor on a few New Delhi tiles and re-scoring the rest.
 - Tall-building under-prediction on all datasets (failure gallery; v1.1 fixes).
 - Controlled leakage study (D13), JAX→OMA, viewer polish, gate G2.
+
+## 2026-11-20 · Phase 3 started: is the New Delhi gap one scale factor? (`scripts/calibration_check.py`)
+
+Method: per-building medians from config D's best checkpoint on each test tile, then (1) ref/pred ratio by height bin, (2) best scale per tile, (3) few-shot calibration: fit one factor on K random New Delhi tiles (scale through the origin, L1; or affine, least squares), score the other tiles, 50 repeats. Control: the same on the block run (seen cities). Outputs: `<run>/calibration_best.json`, `<run>/buildings_best.npz`.
+
+| Per-building, held-out tiles | MAE | 10–30 m MAE | 30+ m MAE | floor ±1 | fitted scale |
+|---|---|---|---|---|---|
+| New Delhi, no calibration | 5.77 | 6.60 | 17.3 | 0.50 | – |
+| New Delhi, scale from 1 tile | 4.91 | 4.72 | 9.9 | 0.59 | 1.53 ± 0.33 |
+| New Delhi, scale from 3 tiles | 4.48 | 4.14 | 9.1 | 0.63 | 1.54 ± 0.20 |
+| **New Delhi, scale from 5 tiles** | **4.24** | **3.88** | **9.5** | **0.66** | **1.48 ± 0.09** |
+| New Delhi, scale from 10 tiles | 4.23 | 3.89 | 9.5 | 0.66 | 1.48 ± 0.09 |
+| New Delhi, oracle scale (all tiles) | 4.16 | – | – | – | 1.47 |
+| Seen cities (control), oracle scale | 2.48 → 2.48 | – | – | – | 1.00 |
+
+**Findings**
+1. **Most of the New Delhi gap is a single scale error: the model predicts buildings about 1.47× too low.** Five labelled tiles are enough to estimate it (1.48 ± 0.09) and cut per-building MAE by 26% (5.77 → 4.24 m), the 10–30 m error by 41% and the 30 m+ error by 45%; floor ±1 rises from 50% to 66%. More tiles add nothing.
+2. **It is specific to the unseen city.** On seen cities the fitted scale is 1.00 and calibration doesn't help (2.48 → 2.50 m with 5 tiles), so this is a domain shift, not a general bias of the model.
+3. **A scale is the right correction; affine is not better** (4.29 vs 4.24 m with 5 tiles, and much worse with 1 tile). By predicted height the ratio is roughly flat (1.4–1.7). By reference height it rises from 0.85 to 2.0, which partly reflects regression to the mean and partly that the tallest buildings are compressed further.
+4. **What scale can't fix:** after calibration New Delhi is still 4.24 vs 2.48 m in-domain. Per-tile scales vary (p10–p90: 1.25–1.94) and 30 m+ buildings keep a 9.5 m error. The rest is appearance-dependent and needs New Delhi-like training data (v1.1: synthetic data, or a small fine-tune).
+5. The 15 Gaofen-2 tiles (91 buildings) are much worse (MAE 12.1 m, bias −11.9 m) than the 116 WorldView tiles (5.6 m): the model has seen only 47 Gaofen-2 tiles, all from Brasília.
+
+**Product angle:** "label 5 tiles of a new city → 26% lower error" is a cheap, practical deployment step. It goes into the README as a documented option, kept separate from the uncalibrated zero-shot number.
+
+Next in Phase 3: failure gallery (tall buildings, Gaofen-2, per-tile scale outliers), controlled leakage study protocol (D13), JAX→OMA, viewer polish, gate G2.
