@@ -1,0 +1,6 @@
+# Phase 3 / controlled leakage study (DECISIONS D13): config D on DFC2019, scored on all 205 shared test views.
+# Train with --split leak_b (model B); model A is p2d_dfc19_tile, re-scored with
+#   python scripts/evaluate_run.py p2d_dfc19_tile --split leak_a --n-test 205
+base: ../p2/d_mse.yaml
+dataset: dfc19
+n_test: 205

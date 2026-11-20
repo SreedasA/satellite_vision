@@ -4,6 +4,7 @@ Use when an evaluation bug is fixed after training (e.g. the U-Net padding fix, 
 Writes <run>/test_metrics_<checkpoint>_reeval.json; the original test_metrics.json is kept.
 
 Usage: python scripts/evaluate_run.py RUN_NAME [--checkpoint best|last] [--split-part test|val]
+       [--split OTHER_SPLIT --n-test N]   (score the run on another split's test views, e.g. leak_a)
 """
 
 import argparse
@@ -21,6 +22,8 @@ def main():
     ap.add_argument("run")
     ap.add_argument("--checkpoint", choices=["best", "last"], default="best")
     ap.add_argument("--split-part", choices=["test", "val"], default="test")
+    ap.add_argument("--split", help="evaluate on this split of the same dataset instead of the training split")
+    ap.add_argument("--n-test", type=int, help="number of test views (default: the run's n_test)")
     args = ap.parse_args()
 
     paths = load_paths()
@@ -31,13 +34,14 @@ def main():
     model.load_state_dict(state["model"] if "model" in state else state)
     model = model.cuda().eval()
 
-    split = load_split(cfg["dataset"], cfg["split"])
-    n, seed = (cfg["n_test"], 0) if args.split_part == "test" else (cfg["n_val"], 1)
+    split = load_split(cfg["dataset"], args.split or cfg["split"])
+    n, seed = (args.n_test or cfg["n_test"], 0) if args.split_part == "test" else (cfg["n_val"], 1)
     ids = sample_ids(split[args.split_part], n, seed=seed)
     res = evaluate_model(model, make_bench(cfg["dataset"], paths["processed"]), ids)
-    res |= {"run": args.run, "checkpoint": args.checkpoint, "part": args.split_part,
+    res |= {"run": args.run, "checkpoint": args.checkpoint, "part": args.split_part, "split": args.split or cfg["split"],
             "epoch": state.get("epoch") if isinstance(state, dict) and "model" in state else None}
-    out = run_dir / f"{args.split_part}_metrics_{args.checkpoint}_reeval.json"
+    tag = f"_{args.split}" if args.split else ""
+    out = run_dir / f"{args.split_part}_metrics_{args.checkpoint}{tag}_reeval.json"
     out.write_text(json.dumps(res, indent=1))
     a, b, p = res["all"], res["building"], res["per_building"]["all"]
     print(f"{args.run} [{args.checkpoint}] {args.split_part}: RMSE {a['rmse']} MAE {a['mae']} | B-RMSE {b['rmse']} | "

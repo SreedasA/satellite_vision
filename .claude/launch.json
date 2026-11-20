@@ -4,19 +4,36 @@
     {
       "name": "web-static",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "web", "--bind", "127.0.0.1"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8765",
+        "--directory",
+        "web",
+        "--bind",
+        "127.0.0.1"
+      ],
       "port": 8765
     },
     {
       "name": "api",
       "runtimeExecutable": "S:/sat2city-data/venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", "8000"],
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "api.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
       "port": 8000,
       "env": {
-        "SAT2CITY_CKPT": "S:/sat2city-data/runs/p1_dav2s_dfc23_cross_city/best.pt",
+        "SAT2CITY_CKPT": "S:/sat2city-data/runs/p2d_dfc23_cross_city/best.pt",
         "HF_HUB_OFFLINE": "1",
         "PYTHONUTF8": "1",
-        "MLFLOW_DISABLE_AGENT_HINT": "1"
+        "MLFLOW_DISABLE_AGENT_HINT": "1",
+        "SAT2CITY_CKPT_DFC19": "S:/sat2city-data/runs/p2d_dfc19_tile/best.pt"
       }
     }
   ]

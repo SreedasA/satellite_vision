@@ -1,10 +1,12 @@
 """Sat2City3D inference API (Phase 1: PyTorch backend; ONNX backend comes in Phase 4).
 
 Run:  SAT2CITY_CKPT=S:/sat2city-data/runs/<run>/best.pt uvicorn api.main:app --port 8000
+      Optional per-dataset checkpoints for benchmark tiles: SAT2CITY_CKPT_DFC19, SAT2CITY_CKPT_DFC23.
 Endpoints:
   GET  /health                      model + device info
   POST /predict  (multipart file)   RGB image -> LoD1 GeoJSON + stats
        query: footprints=height (only option for uploads), min_height, gsd, origin_lon, origin_lat
+  GET  /benchmark/{dataset}/tiles    test tiles for the viewer's picker (grouped by city / split)
   GET  /benchmark/{dataset}/{tile}  benchmark tile -> GeoJSON with reference footprints
 CORS is open so the static Cesium viewer (served from another origin) can call it.
 """
@@ -36,14 +38,17 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "P
 _state: dict = {}
 
 
-def model():
-    if "model" not in _state:
-        ckpt = os.environ.get("SAT2CITY_CKPT")
+def model(dataset: str | None = None):
+    """Default model (SAT2CITY_CKPT), or a dataset-specific one (SAT2CITY_CKPT_DFC19 / _DFC23) if set."""
+    ckpt = (dataset and os.environ.get(f"SAT2CITY_CKPT_{dataset.upper()}")) or os.environ.get("SAT2CITY_CKPT")
+    models = _state.setdefault("models", {})
+    if ckpt not in models:
         if not ckpt or not Path(ckpt).exists():
             raise HTTPException(503, "SAT2CITY_CKPT is not set to an existing checkpoint")
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        _state.update(model=load_model(ckpt, device), device=device, ckpt=ckpt)
-    return _state["model"]
+        _state["device"] = "cuda" if torch.cuda.is_available() else "cpu"
+        models[ckpt] = load_model(ckpt, _state["device"])
+    _state["ckpt"] = ckpt
+    return models[ckpt]
 
 
 def summary(feats: list[dict]) -> dict:
@@ -55,7 +60,7 @@ def summary(feats: list[dict]) -> dict:
 
 @app.get("/health")
 def health():
-    loaded = "model" in _state
+    loaded = bool(_state.get("models"))
     return {"status": "ok", "model_loaded": loaded, "device": _state.get("device"),
             "checkpoint": _state.get("ckpt") or os.environ.get("SAT2CITY_CKPT")}
 
@@ -129,16 +134,40 @@ def _bounds(rgb_path: Path, shape, origin, gsd) -> list[float]:
     return [round(float(v), 7) for v in (w_lon, s_lat, e_lon, n_lat)]
 
 
+# Test tiles offered in the viewer. Whether a tile is unseen depends on the checkpoint: the New Delhi
+# tiles are unseen for the cross_city model, the held-out blocks for the block model.
+PICKER = {"dfc23": (("cross_city", "New Delhi (unseen city)"), ("block", "held-out blocks")),
+          "dfc19": (("tile", "held-out tiles"),)}
+
+
+@app.get("/benchmark/{dataset}/tiles")
+def benchmark_tiles(dataset: str):
+    from sat2city.eval.benchmark import load_split
+
+    if dataset not in PICKER:
+        raise HTTPException(404, "unknown dataset")
+    out, seen = [], set()
+    for split, label in PICKER[dataset]:
+        for t in sorted(load_split(dataset, split)["test"]):
+            if t in seen:
+                continue
+            seen.add(t)
+            city = t.split("_")[1] if dataset == "dfc23" else t[:3]
+            out.append({"tile": t, "group": f"{city} · {label}"})
+    return out
+
+
 @app.get("/benchmark/{dataset}/{tile}")
 def benchmark_tile(dataset: str, tile: str, min_height: float = 2.0):
     bench, rgb_path = _bench_tile(dataset, tile)
     t0 = time.perf_counter()
     rgb, _, _, labels = bench.load(tile)
-    height = predict_large(model(), rgb, _state["device"])
+    height = predict_large(model(dataset), rgb, _state["device"])
     origin = LOCAL_ORIGIN.get(tile[:3], LOCAL_ORIGIN["JAX"])
     feats, placement = buildings_for(height, rgb_path, labels, origin, 1.3, min_height)
     return {"type": "FeatureCollection", "features": feats,
             "metadata": summary(feats) | {"footprints": "reference", "placement": placement, "tile": tile,
+                                          "dataset": dataset, "checkpoint": Path(_state["ckpt"]).parent.name,
                                           "bounds": _bounds(rgb_path, height.shape, origin, 1.3),
                                           "seconds": round(time.perf_counter() - t0, 2)}}
 

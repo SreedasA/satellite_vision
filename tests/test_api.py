@@ -20,8 +20,27 @@ class TallSquareModel(torch.nn.Module):
 
 @pytest.fixture()
 def client(monkeypatch):
-    monkeypatch.setattr(main, "_state", {"model": TallSquareModel(), "device": "cpu", "ckpt": "fake"})
+    monkeypatch.setenv("SAT2CITY_CKPT", "fake")
+    monkeypatch.delenv("SAT2CITY_CKPT_DFC19", raising=False)
+    monkeypatch.delenv("SAT2CITY_CKPT_DFC23", raising=False)
+    monkeypatch.setattr(main, "_state", {"models": {"fake": TallSquareModel()}, "device": "cpu"})
     return TestClient(main.app)
+
+
+def test_per_dataset_checkpoint(client, monkeypatch):
+    other = TallSquareModel()
+    main._state["models"]["dfc19.pt"] = other
+    monkeypatch.setenv("SAT2CITY_CKPT_DFC19", "dfc19.pt")
+    assert main.model("dfc19") is other and main.model("dfc23") is main._state["models"]["fake"]
+    assert main.model() is main._state["models"]["fake"]
+
+
+def test_tile_picker_lists_test_tiles(client):
+    r = client.get("/benchmark/dfc23/tiles")
+    assert r.status_code == 200
+    tiles = r.json()
+    assert tiles[0]["group"].startswith("NewDelhi") and len({t["tile"] for t in tiles}) == len(tiles)
+    assert client.get("/benchmark/nope/tiles").status_code == 404
 
 
 def test_health(client):

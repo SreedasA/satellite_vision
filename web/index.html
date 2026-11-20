@@ -24,6 +24,11 @@
     #stats div:nth-child(even) { text-align: right; font-variant-numeric: tabular-nums; }
     #note { color: var(--muted); font-size: 11px; margin-top: 8px; }
     #msg { color: var(--ok); font-size: 12px; margin-top: 6px; min-height: 1em; }
+    #legend { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
+    .ramp { display: flex; } .ramp span { flex: 1; text-align: center; padding: 2px 0; color: #1b1b1b; font-variant-numeric: tabular-nums; }
+    .flood { display: flex; gap: 10px; align-items: center; } .flood i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+    #attr { color: var(--muted); font-size: 10px; margin-top: 6px; }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
@@ -32,25 +37,35 @@
   <h1>Sat2City3D</h1>
   <div class="sub">One satellite image → 3D city</div>
   <div class="row" id="apiRow">
-    <select id="dataset"><option value="dfc23">DFC23</option><option value="dfc19">DFC19</option></select>
-    <input id="tile" type="text" placeholder="tile name">
-    <button id="load">Load</button>
+    <select id="dataset" aria-label="Dataset"><option value="dfc23">DFC23</option><option value="dfc19">DFC19</option></select>
+    <select id="tile" aria-label="Test tile"></select>
+  </div>
+  <div class="row" id="apiButtons">
+    <button id="load">Load</button><button id="random" title="Load a random test tile">Random</button>
+  </div>
+  <div class="row" id="demoRow" hidden>
+    <select id="demo" aria-label="Demo tile"></select>
   </div>
   <label>Rise <input id="rise" type="range" min="0" max="1" step="0.01" value="1"><span id="riseVal"></span></label>
   <label>Sun (UTC h) <input id="hour" type="range" min="0" max="23.75" step="0.25" value="5"><span id="hourVal"></span></label>
   <label>Flood (m) <input id="flood" type="range" min="0" max="12" step="0.5" value="0"><span id="floodVal"></span></label>
   <div id="stats"></div>
+  <div id="legend">
+    <div>Building height (m)</div>
+    <div class="ramp" id="ramp"></div>
+    <div class="flood"><span><i style="background:#d0453a"></i>submerged</span><span><i style="background:#e88a35"></i>lower floors wet</span><span><i style="background:#3d8fe0"></i>water</span></div>
+  </div>
   <div id="msg"></div>
   <div id="note">Heights are model estimates. Flood view is illustrative only, not a hydraulic simulation.</div>
+  <div id="attr"></div>
 </div>
 <script>
   Cesium.Ion.defaultAccessToken = "";
   const qs = new URLSearchParams(location.search);
   const API = qs.get("api");               // e.g. http://127.0.0.1:8000
-  const STATIC = qs.get("data");           // e.g. data/newdelhi_pred.geojson
-  if (!API) document.getElementById("apiRow").style.display = "none";
+  const STATIC = qs.get("data");           // e.g. data/newdelhi_pred.geojson; no api and no data -> demo/index.json
+  if (!API) { document.getElementById("apiRow").hidden = true; document.getElementById("apiButtons").hidden = true; }
   if (qs.get("dataset")) document.getElementById("dataset").value = qs.get("dataset");
-  if (qs.get("tile")) document.getElementById("tile").value = qs.get("tile");
 
   const viewer = new Cesium.Viewer("viewer", {
     baseLayer: false, baseLayerPicker: false, geocoder: false, timeline: false, animation: false,
@@ -61,7 +76,9 @@
   viewer.shadowMap.softShadows = true;
   viewer.shadowMap.size = 2048;
 
-  const ramp = h => Cesium.Color.fromCssColorString(h < 6 ? "#ece6d8" : h < 12 ? "#ddcca6" : h < 20 ? "#cfa66c" : h < 35 ? "#b97a45" : "#8e4f2c");
+  const RAMP = [[6, "#ece6d8", "<6"], [12, "#ddcca6", "6–12"], [20, "#cfa66c", "12–20"], [35, "#b97a45", "20–35"], [Infinity, "#8e4f2c", "35+"]];
+  const ramp = h => Cesium.Color.fromCssColorString(RAMP.find(([lim]) => h < lim)[1]);
+  document.getElementById("ramp").innerHTML = RAMP.map(([, c, t]) => `<span style="background:${c}">${t}</span>`).join("");
   const state = { buildings: [], heights: [], rise: 1, flood: 0, water: null, imagery: null, meta: {} };
 
   function setStats() {
@@ -96,13 +113,17 @@
     state.buildings = ds.entities.values.filter(e => e.polygon);
     state.heights = state.buildings.map(e => e.properties.height_m.getValue());
     for (const e of state.buildings) {
-      e.polygon.height = 0; e.polygon.outline = false; e.polygon.shadows = Cesium.ShadowMode.ENABLED;
+      // CAST_ONLY: buildings shadow the ground; receiving shadows on their own roofs caused stripe artefacts.
+      e.polygon.height = 0; e.polygon.outline = false; e.polygon.shadows = Cesium.ShadowMode.CAST_ONLY;
       const p = e.properties;
       e.description = `Height ${p.height_m.getValue()} m · ~${p.floors.getValue()} floors · ${p.area_m2.getValue()} m²`;
     }
     const b = state.meta.bounds;
-    if (b && API) {
-      const url = `${API}/benchmark/${document.getElementById("dataset").value}/${encodeURIComponent(state.meta.tile)}/image.png`;
+    document.getElementById("attr").textContent = state.meta.attribution || "";
+    const imgUrl = state.meta.image ? state.meta.image
+      : API && state.meta.tile ? `${API}/benchmark/${state.meta.dataset || document.getElementById("dataset").value}/${encodeURIComponent(state.meta.tile)}/image.png` : null;
+    if (b && imgUrl) {
+      const url = imgUrl;
       const rect = Cesium.Rectangle.fromDegrees(...b);
       const provider = await Cesium.SingleTileImageryProvider.fromUrl(url, { rectangle: rect });
       // Clip the layer to the tile; otherwise edge texels get smeared across the whole globe.
@@ -125,7 +146,28 @@
     el("hour").value = (((10.5 - lon / 15) % 24) + 24) % 24;
     el("hour").oninput();
     applyHeights();
-    await viewer.flyTo(ds, { duration: 0, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(25), Cesium.Math.toRadians(-38), 0) });
+    // Frame the whole tile: range ~ 1.1x its diagonal (0 lets Cesium zoom onto the buildings only).
+    const range = b ? 1.1 * Cesium.Cartesian3.distance(Cesium.Cartesian3.fromDegrees(b[0], b[1]), Cesium.Cartesian3.fromDegrees(b[2], b[3])) : 0;
+    await viewer.flyTo(ds, { duration: 0, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(25), Cesium.Math.toRadians(-38), range) });
+  }
+
+  async function listTiles() {
+    const ds = el("dataset").value, sel = el("tile");
+    try {
+      const tiles = await (await fetch(`${API}/benchmark/${ds}/tiles`)).json();
+      const groups = {};
+      for (const t of tiles) (groups[t.group] ||= []).push(t.tile);
+      sel.innerHTML = Object.entries(groups).map(([g, ts]) =>
+        `<optgroup label="${g} (${ts.length})">${ts.map(t => `<option>${t}</option>`).join("")}</optgroup>`).join("");
+      const want = qs.get("tile");
+      if (want && tiles.some(t => t.tile === want)) sel.value = want;
+    } catch (e) { el("msg").textContent = `Could not list tiles: ${e.message}`; }
+  }
+
+  async function loadDemo(file) {
+    const gj = await (await fetch(file)).json();
+    await show(gj);
+    el("msg").textContent = `${gj.metadata.buildings} buildings · unseen test tile · model ${gj.metadata.checkpoint}`;
   }
 
   async function loadFromApi() {
@@ -151,10 +193,18 @@
   };
   el("flood").oninput = () => { state.flood = +el("flood").value; el("floodVal").textContent = state.flood; applyHeights(); };
   el("load").onclick = loadFromApi;
+  el("random").onclick = () => { const o = el("tile").options; if (o.length) { el("tile").selectedIndex = Math.floor(Math.random() * o.length); loadFromApi(); } };
+  el("dataset").onchange = listTiles;
+  el("demo").onchange = () => loadDemo(el("demo").value);
   el("rise").oninput(); el("hour").oninput(); el("flood").oninput();
 
-  if (STATIC) fetch(STATIC).then(r => r.json()).then(show);
-  else if (API && el("tile").value) loadFromApi();
+  if (STATIC) loadDemo(STATIC);
+  else if (API) listTiles().then(() => { if (qs.get("tile")) loadFromApi(); });
+  else fetch("demo/index.json").then(r => r.json()).then(list => {
+    el("demoRow").hidden = false;
+    el("demo").innerHTML = list.map(d => `<option value="${d.file}">${d.label} · ${d.buildings} buildings</option>`).join("");
+    return loadDemo(list[0].file);
+  }).catch(() => { el("msg").textContent = "No demo data found (web/demo/index.json)."; });
   window.sat2city = { viewer, state };
 </script>
 </body>

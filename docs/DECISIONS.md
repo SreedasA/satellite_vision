@@ -56,3 +56,10 @@ Short records: date · decision · why · alternatives considered.
 
 ### D15 · 2026-11-17 · Viewer sets the sun to ~10:30 local solar time per tile
 **Why:** a fixed 05:00 UTC default lit New Delhi but drew Jacksonville at night. UTC hour = 10.5 − lon/15.
+
+### D16 · 2026-11-20 · Unseen cities: report zero-shot, offer 5-tile scale calibration as a documented option
+**Evidence:** New Delhi held out, config D: one scale factor (×1.48) fitted on 5 labelled tiles cuts per-building MAE 5.77 → 4.24 m; on seen cities the fitted factor is 1.00 and calibration doesn't help (docs/LOG.md, 20 Nov).
+**Decision:** the headline unseen-city number stays uncalibrated. Calibration is a separate, clearly labelled row and a README "deploying to a new city" step. Affine calibration is not used (no better, unstable with 1 tile).
+
+### D17 · 2026-11-20 · Leakage study: same test views, same training-set size
+Refines D13. Model A = the existing `p2d_dfc19_tile` run; model B swaps 200 random training views for the 200 other views of the test tiles, so both train on 1,997 views and only B has seen the test locations. Both are scored on the same 205 test views. One new run (B) instead of two.

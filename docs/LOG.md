@@ -327,8 +327,52 @@ Method: per-building medians from config D's best checkpoint on each test tile, 
 2. **It is specific to the unseen city.** On seen cities the fitted scale is 1.00 and calibration doesn't help (2.48 → 2.50 m with 5 tiles), so this is a domain shift, not a general bias of the model.
 3. **A scale is the right correction; affine is not better** (4.29 vs 4.24 m with 5 tiles, and much worse with 1 tile). By predicted height the ratio is roughly flat (1.4–1.7). By reference height it rises from 0.85 to 2.0, which partly reflects regression to the mean and partly that the tallest buildings are compressed further.
 4. **What scale can't fix:** after calibration New Delhi is still 4.24 vs 2.48 m in-domain. Per-tile scales vary (p10–p90: 1.25–1.94) and 30 m+ buildings keep a 9.5 m error. The rest is appearance-dependent and needs New Delhi-like training data (v1.1: synthetic data, or a small fine-tune).
-5. The 15 Gaofen-2 tiles (91 buildings) are much worse (MAE 12.1 m, bias −11.9 m) than the 116 WorldView tiles (5.6 m): the model has seen only 47 Gaofen-2 tiles, all from Brasília.
+5. The 15 Gaofen-2 tiles (91 buildings) are much worse (MAE 12.1 m, bias −11.9 m) than the 116 SuperView-1 tiles (5.6 m): the model has seen only 47 Gaofen-2 tiles, all from Brasília.
 
 **Product angle:** "label 5 tiles of a new city → 26% lower error" is a cheap, practical deployment step. It goes into the README as a documented option, kept separate from the uncalibrated zero-shot number.
 
 Next in Phase 3: failure gallery (tall buildings, Gaofen-2, per-tile scale outliers), controlled leakage study protocol (D13), JAX→OMA, viewer polish, gate G2.
+
+## 2026-11-20 · Phase 3: failure gallery (`scripts/failure_gallery.py`, `scripts/shift_check.py`)
+
+Config D best checkpoints, each run's own test sample. Pictures (RGB | reference | prediction | error) for the worst tiles per failure type are in `S:/sat2city-data/gallery/<run>/` (local only: DFC23 imagery licence unverified).
+
+**Pixel error by surface (DFC2019 tile split, 150 tiles)**
+
+| Surface | MAE | RMSE | bias |
+|---|---|---|---|
+| ground | 0.50 | 1.54 | +0.21 |
+| water | 0.17 | 0.67 | −0.05 |
+| trees | 3.24 | 4.57 | **−1.54** |
+| building | 3.71 | 7.12 | −1.73 |
+| bridge / elevated road | 6.64 | 8.48 | **−6.27** |
+| building edges (3 px rim) / interiors | 2.57 / 4.09 | 4.75 / 7.74 | −0.82 / −2.04 |
+
+**DFC2023:** block test building edges +0.78 m bias vs interiors +0.01 m (edges blur outward); New Delhi edges −5.8 / interiors −6.6 m (the whole building is low, not just its edges). Building pixels by sensor, New Delhi: Gaofen-2 MAE 9.9 m vs SuperView-1 7.2 m.
+
+**Per building by height and footprint size (DFC23 block):** within each height bin the error barely depends on footprint size (30 m+: small 5.1, mid 6.0, large 5.1 m MAE). On DFC2019 the 10–30 m buildings with small footprints are worst (MAE 10.0 m, bias −9.7 m, n=76), mostly thin parts of larger structures.
+
+**Findings**
+1. **Trees are under-predicted (−1.5 m), not over-predicted.** The earlier worry about trees inflating the bias is not supported.
+2. **Bridges and elevated roads are the worst surface** (−6.3 m bias): the model reads them as ground. They aren't buildings, so LoD1 output is unaffected, but flood/shadow views would be.
+3. **Tall-building misses have two causes:**
+   - **Compression:** buildings over 60 m come out at about 40% of their height on DFC23 (median pred/ref 0.40; 0.92 for 30–60 m). The model rarely predicts above ~40 m.
+   - **Off-nadir lean on DFC2019 downtown tiles** (JAX_164): the model places tall buildings where they appear in the angled view, while the reference is in nadir geometry, so the error shows as red/blue pairs. Whole-tile shifts don't fix it (best shift removes only 1% of building error on DFC2019, 7% on DFC23 block, mostly Berlin), because the lean grows with height and differs per building. Learning it needs offset-aware labels (v2.0 "offset-aware footprints").
+4. **No hallucinated towers.** The largest over-predictions are the lean pairs above and reference artefacts (a crane-like diagonal structure in JAX_164), not invented buildings.
+5. **Some "tall misses" are footprint fragments** (1–40 px instances at tile edges with a tall reference median). They are few, but they inflate the 30 m+ error on small bins.
+6. **New Delhi:** dense 8–12-storey apartment blocks are predicted at about half height; the shape is right, the scale is wrong (consistent with the 1.47 calibration factor). A Gaofen-2 construction site is predicted as ~15 m tall.
+
+## 2026-11-20 · Phase 3: leakage study set up, viewer polish
+
+**Leakage study (D17):** splits `dfc19_leak_a/b` (14 test tiles, 205 shared test views, 200 swapped training views). Model A is already scored on the shared test views (`p2d_dfc19_tile`, re-evaluated): **RMSE 3.19 m, MAE 1.22, building RMSE 7.16, per-building MAE 1.61, floor ±1 95.1%**. Model B needs one run (`configs/train/p3/README.md`).
+
+**Viewer:**
+- Tile picker grouped by city and split (`GET /benchmark/{dataset}/tiles`), plus a Random button.
+- Height legend and flood legend.
+- Per-dataset checkpoints in the API (`SAT2CITY_CKPT_DFC19`, `SAT2CITY_CKPT_DFC23`).
+- **Static DFC2019 demo** (`web/demo/`, made by `scripts/export_demo.py` with `p2d_dfc19_tile`): 3 unseen test tiles (Jacksonville downtown, Jacksonville mixed, Omaha), daylight sun, CC-BY attribution shown. Opens with no API: ready for GitHub Pages.
+- Buildings now cast shadows but don't receive them (receiving caused stripe artefacts on roofs); the camera frames the whole tile.
+
+Tests: 47 pass (new: tile picker, per-dataset checkpoint).
+
+**Remaining in Phase 3:** your two runs (leakage model B, Jacksonville → Omaha), then gate G2.

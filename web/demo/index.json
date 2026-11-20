@@ -1,0 +1,20 @@
+[
+ {
+  "tile": "JAX_164_008",
+  "file": "demo/JAX_164_008.geojson",
+  "buildings": 177,
+  "label": "Jacksonville \u00b7 JAX_164_008"
+ },
+ {
+  "tile": "JAX_122_013",
+  "file": "demo/JAX_122_013.geojson",
+  "buildings": 81,
+  "label": "Jacksonville \u00b7 JAX_122_013"
+ },
+ {
+  "tile": "OMA_331_001",
+  "file": "demo/OMA_331_001.geojson",
+  "buildings": 113,
+  "label": "Omaha \u00b7 OMA_331_001"
+ }
+]
